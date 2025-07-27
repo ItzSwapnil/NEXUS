@@ -1,0 +1,10 @@
+# ...existing code...
+settings/config.ini
+session.json
+config.yaml
+data/
+logs/
+models/
+tests/models/
+nexus.egg-info/
+# ...existing code...

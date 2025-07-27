@@ -1,0 +1,178 @@
+[build-system]
+requires = ["setuptools>=70.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nexus"
+version = "2.0.0"
+description = "NEXUS - A Self-Evolving AI Trading Agent for Quotex"
+authors = [
+    {name = "NEXUS AI", email = "nexus@ai-trader.dev"}
+]
+requires-python = ">=3.13.5"
+readme = "README.md"
+license = {text = "MIT"}
+keywords = ["trading", "ai", "quotex", "machine-learning", "reinforcement-learning"]
+
+dependencies = [
+    # Core Quotex integration
+    "pyquotex",
+    # Core data science - Latest compatible versions
+    "numpy>=1.26.4",
+    "pandas>=2.2.1",
+    "polars>=0.20.15",
+    "pyarrow>=15.0.2",
+    # Machine Learning - Python 3.13 compatible
+    "torch>=2.2.2",
+    "torchvision>=0.17.2",
+    "lightning>=2.2.1",
+    "transformers>=4.40.0",
+    "scikit-learn>=1.4.2",
+    "xgboost>=2.0.3",
+    "lightgbm>=4.3.0",
+    # Reinforcement Learning
+    "gymnasium>=0.29.1",
+    "stable-baselines3>=2.3.0",
+    "sb3-contrib>=2.3.0",
+    # Optimization & Hyperparameter Tuning
+    "optuna>=3.6.1",
+    "hyperopt>=0.2.7",
+    "bayesian-optimization>=1.4.3",
+    # Technical Analysis (Pure Python - No C dependencies)
+    "pandas-ta>=0.3.14b",
+    "stockstats>=0.6.2",
+    "ta>=0.11.0", # Adding missing ta package for technical analysis
+    # Time Series Analysis (Pure Python alternatives)
+    "statsmodels>=0.14.1",
+    "hmmlearn>=0.3.0", # Adding Hidden Markov Models for regime detection
+    # Removed pmdarima - using pure Python alternatives
+    # Vector Storage & Memory
+    "chromadb>=0.4.24",
+    "faiss-cpu>=1.8.0",
+    "hnswlib>=0.8.0",
+    # Fast Data Storage
+    "duckdb>=0.10.2",
+    "sqlite-utils>=3.36",
+    # Async & Networking
+    "aiohttp>=3.9.5",
+    "websockets>=12.0",
+    "httpx>=0.27.0",
+    # Configuration Management
+    "pydantic>=2.7.1",
+    "pydantic-settings>=2.2.1",
+    "python-dotenv>=1.0.1",
+    "omegaconf>=2.3.0",
+    # Logging & Monitoring
+    "rich>=13.7.1",
+    "loguru>=0.7.2",
+    # Performance & Utilities
+    "numba>=0.59.1",
+    "joblib>=1.4.0",
+    "tqdm>=4.66.4",
+    "psutil>=5.9.8",
+    "orjson>=3.10.3",
+    # Financial Mathematics (Pure Python)
+    "quantstats>=0.0.62",
+    "yfinance>=0.2.18",
+    "pyfolio-reloaded>=0.9.5",
+    # Evolutionary & Genetic Algorithms
+    "deap>=1.4.1",
+    "neat-python>=0.92",
+    "pygad>=3.3.1",
+    # Web Interface
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "streamlit>=1.35.0",
+    "plotly>=5.22.0",
+    # Date & Time
+    "pendulum>=3.0.0",
+    "arrow>=1.3.0",
+    # Additional Math & Stats (Pure Python)
+    "scipy>=1.13.0",
+    "sympy>=1.12",
+    "pandas-stubs==2.3.0.250703",
+    "sentence-transformers>=5.0.0",
+    "pyqtgraph>=0.13.7",
+    "langgraph>=0.5.4",
+    "pyside6>=6.9.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.1",
+    "pytest-asyncio>=0.23.6",
+    "pytest-cov>=5.0.0",
+    "black>=24.4.2",
+    "isort>=5.13.2",
+    "flake8>=7.0.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.1",
+]
+
+analysis = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.29.4",
+    "matplotlib>=3.9.0",
+    "seaborn>=0.13.2",
+]
+
+[project.scripts]
+nexus = "nexus.main:main"
+nexus-train = "nexus.training:train_main"
+nexus-backtest = "nexus.backtesting:backtest_main"
+
+[project.urls]
+Homepage = "https://github.com/nexus-ai/nexus"
+Repository = "https://github.com/nexus-ai/nexus"
+Issues = "https://github.com/nexus-ai/nexus/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nexus*"]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.2.1",
+    "pytest-asyncio>=0.23.6",
+    "black>=24.4.2",
+    "isort>=5.13.2",
+    "mypy>=1.10.0",
+]
+
+[tool.uv.sources]
+pyquotex = { git = "https://github.com/cleitonleonel/pyquotex.git" }
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+multi_line_output = 3
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q --strict-markers"
+testpaths = ["tests"]
+asyncio_mode = "auto"
