@@ -7,9 +7,16 @@ from nexus.intelligence.rl_agent import RLAgent
 from nexus.intelligence.regime_detector import RegimeDetector
 
 def test_market_predictor_forward():
-    predictor = MarketPredictor(lookback_periods=10, feature_dim=5, batch_size=2)
-    # Generate dummy data
-    data = pd.DataFrame(np.random.randn(10, 5), columns=[f'f{i}' for i in range(5)])
+    required_cols = [
+        'open', 'high', 'low', 'close', 'volume',
+        'rsi', 'macd', 'macd_signal', 'bb_upper', 'bb_lower',
+        'ema_short', 'ema_medium', 'ema_long', 'atr',
+        'trend_strength', 'volatility', 'momentum',
+        'mean_reversion', 'support', 'resistance'
+    ]
+    predictor = MarketPredictor(lookback_periods=10, feature_dim=len(required_cols), batch_size=2)
+    # Generate dummy data with all required columns
+    data = pd.DataFrame(np.random.randn(10, len(required_cols)), columns=required_cols)
     tensor = predictor.preprocess(data)
     logits, confidence = predictor.model(tensor)
     assert logits.shape[-1] == 3

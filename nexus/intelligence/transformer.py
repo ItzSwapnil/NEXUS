@@ -480,9 +480,10 @@ class MarketPredictor:
             }
 
         # Ensure input shape is [batch, seq_length, feature_dim]
-        if X_latest.dim() == 3 and X_latest.shape[1] != self.lookback_periods:
-            # If dimensions are swapped, permute them
-            X_latest = X_latest.permute(0, 2, 1)
+        if X_latest.dim() == 3:
+            if X_latest.shape[-1] != self.feature_dim:
+                # Permute if last dimension is not feature_dim
+                X_latest = X_latest.permute(0, 2, 1)
 
         # Set model to evaluation mode
         self.model.eval()
