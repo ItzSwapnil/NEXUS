@@ -1,0 +1,44 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+name: Python application (uv)
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install uv
+      run: |
+        curl -Ls https://astral.sh/uv/install.sh | bash
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Create virtual environment with uv
+      run: uv venv
+
+    - name: Install ALL dependencies (including dev) from pyproject.toml with uv
+      run: uv pip install .[dev]
+    
+    - name: Lint with flake8
+      run: |
+        uv run flake8 . --exclude=.venv --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 . --exclude=.venv --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Test with pytest
+      run: uv run pytest
