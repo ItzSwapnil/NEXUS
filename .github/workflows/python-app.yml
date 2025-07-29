@@ -16,7 +16,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.13
       uses: actions/setup-python@v5
@@ -28,17 +29,16 @@ jobs:
         curl -Ls https://astral.sh/uv/install.sh | bash
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
-    - name: Install dependencies with uv
-      run: |
-        uv pip install flake8 pytest
-        if [ -f requirements.txt ]; then uv pip install -r requirements.txt; fi
+    - name: Create virtual environment with uv
+      run: uv venv
 
+    - name: Install ALL dependencies (including dev) from pyproject.toml with uv
+      run: uv pip install .[dev]
+    
     - name: Lint with flake8
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        uv pip run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv pip run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Test with pytest
-      run: |
-        pytest
-
+      run: uv pip run pytest
