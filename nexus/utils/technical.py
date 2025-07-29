@@ -283,7 +283,7 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
 
     # Calculate price changes
     df['daily_return'] = np.zeros_like(close)
-    df['daily_return'][1:] = (close[1:] - close[:-1]) / close[:-1]
+    df.loc[1:, 'daily_return'] = (close[1:] - close[:-1]) / close[:-1]
 
     # Calculate volatility (rolling 20-day standard deviation of returns)
     returns = df['daily_return'].values
@@ -294,12 +294,12 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
 
     # Calculate momentum (rate of change)
     df['momentum'] = np.zeros_like(close)
-    df['momentum'][10:] = (close[10:] - close[:-10]) / close[:-10]
+    df.loc[10:, 'momentum'] = (close[10:] - close[:-10]) / close[:-10]
 
     # Calculate trend strength
     df['trend_strength'] = np.zeros_like(close)
     # Positive values indicate bullish trend, negative values indicate bearish trend
-    df['trend_strength'][50:] = (df['ema_short'][50:] - df['ema_long'][50:]) / df['ema_long'][50:]
+    df.loc[50:, 'trend_strength'] = (df['ema_short'][50:] - df['ema_long'][50:]) / df['ema_long'][50:]
 
     # Mean reversion indicator (deviation from SMA50)
     df['mean_reversion'] = (close - df['sma_50']) / df['sma_50']
@@ -307,7 +307,7 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     # Volume trend
     df['volume_trend'] = np.zeros_like(volume)
     vol_sma = simple_moving_average(volume, 20)
-    df['volume_trend'][20:] = (volume[20:] - vol_sma[20:]) / vol_sma[20:]
+    df.loc[20:, 'volume_trend'] = (volume[20:] - vol_sma[20:]) / vol_sma[20:]
 
     # Normalized close price (0-1 range in recent window)
     rolling_min = np.zeros_like(close)
@@ -321,7 +321,7 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     range_diff[range_diff == 0] = 1.0
 
     df['close_norm'] = np.zeros_like(close)
-    df['close_norm'][20:] = (close[20:] - rolling_min[20:]) / range_diff[20:]
+    df.loc[20:, 'close_norm'] = (close[20:] - rolling_min[20:]) / range_diff[20:]
 
     # High-low difference relative to close
     df['high_low_diff'] = (high - low) / close
