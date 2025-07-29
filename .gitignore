@@ -2,9 +2,11 @@
 settings/config.ini
 session.json
 config.yaml
+.idea/
 data/
 logs/
 models/
 tests/models/
 nexus.egg-info/
+.codebuddy/
 # ...existing code...
