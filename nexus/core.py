@@ -7,15 +7,11 @@ data collection, model training, strategy execution, and trade placement.
 
 import asyncio
 import logging
-import time
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
-
-import pandas as pd
+from typing import Dict, List, Set, Any
 
 from nexus.client import QuotexClient
-from nexus.config import Config, AssetConfig, StrategyConfig
+from nexus.config import Config
 from nexus.data import DataManager
 from nexus.models import ModelManager
 from nexus.risk import RiskManager

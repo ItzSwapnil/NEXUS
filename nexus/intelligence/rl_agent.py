@@ -410,6 +410,11 @@ class RLAgent:
         """Store transition in replay buffer."""
         self.memory.add(state, action, reward, next_state, done)
 
+    def store_experience(self, state, action, reward, next_state, done):
+        """Store an experience in the replay buffer."""
+        if hasattr(self, 'replay_buffer'):
+            self.replay_buffer.add(state, action, reward, next_state, done)
+
     def save_model(self):
         """Save model weights and parameters."""
         try:

@@ -1,6 +1,7 @@
 import pytest
 import numpy as np
 import pandas as pd
+import asyncio
 from nexus.intelligence.transformer import MarketPredictor
 from nexus.intelligence.rl_agent import RLAgent
 from nexus.intelligence.regime_detector import RegimeDetector
@@ -19,11 +20,12 @@ def test_rl_agent_learn():
     # Simulate experience
     state = np.random.randn(4)
     next_state = np.random.randn(4)
-    agent.store_experience(state, 1, 1.0, next_state, False)
+    agent.store_transition(state, 1, 1.0, next_state, False)
     agent.learn_from_trade({'state': state, 'action': 1, 'reward': 1.0, 'next_state': next_state, 'done': False})
-    assert len(agent.replay_buffer.buffer) > 0
+    assert len(agent.memory) > 0
 
-def test_regime_detector_detect():
+@pytest.mark.asyncio
+async def test_regime_detector_detect():
     detector = RegimeDetector(n_regimes=3, lookback_periods=50)
     # Generate dummy OHLCV data
     data = pd.DataFrame({
@@ -33,7 +35,7 @@ def test_regime_detector_detect():
         'close': np.random.rand(50),
         'volume': np.random.rand(50)
     })
-    regime = detector.detect_regime(data)
+    regime = await detector.detect_regime(data)
     assert regime in detector.REGIMES
 
     # Test with different regime configurations
@@ -45,7 +47,7 @@ def test_regime_detector_detect():
         'close': np.random.rand(100),
         'volume': np.random.rand(100)
     })
-    regime = detector.detect_regime(data)
+    regime = await detector.detect_regime(data)
     assert regime in detector.REGIMES
 
     detector = RegimeDetector(n_regimes=4, lookback_periods=75)
@@ -56,5 +58,5 @@ def test_regime_detector_detect():
         'close': np.random.rand(75),
         'volume': np.random.rand(75)
     })
-    regime = detector.detect_regime(data)
+    regime = await detector.detect_regime(data)
     assert regime in detector.REGIMES

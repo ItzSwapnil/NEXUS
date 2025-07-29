@@ -1,10 +1,14 @@
 import pytest
 from nexus.core.engine import NexusEngine
-from nexus.utils.config import NexusSettings
+from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
 
 @pytest.fixture
 def engine():
-    settings = NexusSettings()
+    # Provide required dummy values for quotex and trading
+    settings = NexusSettings(
+        quotex=QuotexSettings(email='dummy@example.com', password='dummy'),
+        trading=TradingSettings()
+    )
     return NexusEngine(settings=settings, demo_mode=True, auto_login=False)
 
 def test_engine_initialization(engine):
@@ -35,4 +39,3 @@ def test_advanced_risk_management(engine):
     base_amount = 1000.0
     pos_size = engine.advanced_risk_management(context, base_amount)
     assert pos_size >= 1.0
-
