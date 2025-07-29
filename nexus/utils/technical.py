@@ -348,7 +348,7 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
         # Pattern score based on directions and body sizes
         score = (dir1 * body1 + dir2 * body2 * 2 + dir3 * body3 * 3) / (body1 + body2 * 2 + body3 * 3)
 
-        df['price_pattern'][i] = score
+        df.loc[i, 'price_pattern'] = score
 
     # Fill NaN values
     df = df.fillna(0)
