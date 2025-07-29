@@ -34,11 +34,10 @@ jobs:
 
     - name: Install ALL dependencies (including dev) from pyproject.toml with uv
       run: uv pip install .[dev]
-    
     - name: Lint with flake8
       run: |
-        uv pip run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        uv pip run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        uv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        uv run flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
     - name: Test with pytest
-      run: uv pip run pytest
+      run: uv run pytest
