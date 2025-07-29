@@ -31,7 +31,7 @@ class RegimeDetector:
     to identify market conditions and adapt trading strategy accordingly.
     """
 
-    REGIMES = ["trending", "ranging", "volatile", "reversal"]
+    REGIMES = ["trending", "ranging", "volatile", "reversal", "unknown"]
 
     def __init__(self, n_regimes: int = 4, lookback_periods: int = 200, sensitivity: float = 0.5):
         """
