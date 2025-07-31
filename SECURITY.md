@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/security-critical-red" alt="Security Critical" />
-  <img src="https://img.shields.io/badge/vulnerability-disclosure-yes-blue" alt="Vulnerability Disclosure" />
+  <img src="https://img.shields.io/badge/vulnerability-disclosure-blue" alt="Vulnerability Disclosure" />
   <img src="https://img.shields.io/badge/patches-welcome-brightgreen" alt="Patches Welcome" />
   <img src="https://img.shields.io/badge/encryption-recommended-blueviolet" alt="Encryption" />
 </p>
