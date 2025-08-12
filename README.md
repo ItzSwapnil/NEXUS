@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Status-Alpha-red" alt="Project Status" />
   <img src="https://img.shields.io/badge/License-MIT-blue" alt="License" />
-  <img src="https://img.shields.io/badge/Python-3.13.5-blue" alt="Python Version" />
+  <img src="https://img.shields.io/badge/Python-3.13.6-blue" alt="Python Version" />
   <img src="https://img.shields.io/badge/Quotex-API-green" alt="Quotex API" />
   <img src="https://img.shields.io/badge/AI-Self--Evolving-purple" alt="AI Self-Evolving" />
   <img src="https://img.shields.io/badge/Contributions-Welcome-orange" alt="Contributions Welcome" />
@@ -12,7 +12,7 @@
 
 ---
 
-> <span style="font-size:1.5em; font-weight:bold;">NEXUS is a creative, modular, self-evolving AI trading platform for Quotex, built with Python 3.13.5 and managed with UV. This README is both a vision and a roadmap: features marked as [TODO] are planned, not yet implemented. All instructions and code reflect the actual project structure and current capabilities.</span>
+> <span style="font-size:1.5em; font-weight:bold;">NEXUS is a creative, modular, self-evolving AI trading platform for Quotex, built with Python 3.13.6 and managed with UV. This README is both a vision and a roadmap: features marked as [TODO] are planned, not yet implemented. All instructions and code reflect the actual project structure and current capabilities.</span>
 
 ---
 
@@ -173,7 +173,7 @@ graph LR;
 # Installation & Quick Start
 
 ## Prerequisites
-- Python 3.13.5 (strictly enforced)
+- Python 3.13.6 (strictly enforced)
 - [UV](https://github.com/astral-sh/uv) for dependency management
 - Git
 
@@ -263,7 +263,7 @@ uv python -m flake8 .
 
 # Troubleshooting
 
-- **Installation issues**: Check Python version (must be 3.13.5), update UV, and ensure all dependencies are installed.
+- **Installation issues**: Check Python version (must be 3.13.6), update UV, and ensure all dependencies are installed.
 - **Quotex API errors**: Ensure credentials are correct and `lang="en"` is set in all API calls.
 - **Model/strategy errors**: Check logs in `logs/` and ensure all required models are present in `models/`.
 - **GUI issues**: Ensure PySide6 is installed and your system supports Qt.
