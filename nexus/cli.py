@@ -22,7 +22,7 @@ async def main():
     parser.add_argument("--email", type=str, help="Quotex account email")
     parser.add_argument("--password", type=str, help="Quotex account password")
     parser.add_argument("--demo", action="store_true", help="Use demo account")
-    parser.add_argument("--assets", type=str, nargs='+', default=["EURUSD"], help="Assets to trade")
+    parser.add_argument("--assets", type=str, nargs='+', default=["EURUSD"], help="Assets to trade or 'auto' to fetch live")
     parser.add_argument("--timeframe", type=int, default=5, help="Timeframe in minutes")
     parser.add_argument("--mode", type=str, choices=["live", "paper"], default="paper", help="Trading mode")
     parser.add_argument("--list-strategies", action="store_true", help="List available strategies")
@@ -36,6 +36,19 @@ async def main():
 
     engine = NexusEngine(email=args.email, password=args.password, demo_mode=args.demo)
     await engine.initialize_components()
+
+    # Dynamic asset discovery if requested
+    if len(args.assets) == 1 and args.assets[0].lower() == 'auto':
+        await engine.login()
+        live_assets = await engine.quotex.get_available_assets_async()
+        # Normalize asset symbols list if API returns dicts
+        if live_assets and isinstance(live_assets[0], dict):
+            symbols = [a.get('name') or a.get('symbol') for a in live_assets if a.get('active', True)]
+        else:
+            symbols = [str(a) for a in live_assets]
+        # Fallback to EURUSD if none
+        args.assets = symbols[:10] if symbols else ["EURUSD"]
+        console.print(Panel(f"Trading assets (auto): {', '.join(args.assets)}", style="cyan"))
 
     if args.list_strategies:
         table = Table(title="Available Strategies", box=box.SIMPLE)

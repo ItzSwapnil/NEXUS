@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger("nexus.config")
@@ -24,8 +24,8 @@ class QuotexConfig(BaseModel):
     lang: str = "en"
     reconnect_attempts: int = 5
 
-    class Config:
-        frozen = True
+    # Pydantic v2 config
+    model_config = ConfigDict(frozen=True)
 
 class AssetConfig(BaseModel):
     """Configuration for a trading asset."""
@@ -35,8 +35,7 @@ class AssetConfig(BaseModel):
     min_expiry: int = 60  # Minimum expiry time in seconds
     max_expiry: int = 300  # Maximum expiry time in seconds
 
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 class RiskConfig(BaseModel):
     """Configuration for risk management."""
@@ -124,8 +123,7 @@ class ModelConfig(BaseModel):
     save_path: str = "models"
     load_best: bool = True
 
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 class DataConfig(BaseModel):
     """Configuration for data management."""
@@ -169,8 +167,7 @@ class StrategyConfig(BaseModel):
     parameters: Dict[str, Any] = Field(default_factory=dict)
     timeframes: List[int] = Field(default_factory=lambda: [60, 300])
 
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
 class Config(BaseModel):
     """Main configuration class for NEXUS."""
@@ -181,8 +178,8 @@ class Config(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     strategies: List[StrategyConfig]
 
-    class Config:
-        frozen = True
+    model_config = ConfigDict(frozen=True)
+
 
 def load_config(config_path: Union[str, Path]) -> Config:
     """
@@ -203,6 +200,7 @@ def load_config(config_path: Union[str, Path]) -> Config:
 
     return Config.model_validate(config_data)
 
+
 def save_config(config: Config, config_path: Union[str, Path] = "config.yaml"):
     """Save configuration to YAML file."""
     config_path = Path(config_path)
@@ -218,6 +216,7 @@ def save_config(config: Config, config_path: Union[str, Path] = "config.yaml"):
     except Exception as e:
         logger.error(f"Failed to save config to {config_path}: {e}")
         raise
+
 
 def create_default_config() -> Config:
     """Create a default configuration with sensible defaults."""

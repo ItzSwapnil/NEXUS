@@ -1,348 +1,192 @@
 """
-NEXUS Main Entry Point - Self-Evolving AI Trader for Quotex
+NEXUS Master Launch Panel
 
-This is the main entry point for the NEXUS autonomous trading system.
-Features:
-- Complete AI ensemble with Transformer, RL, and Evolution
-- Real-time market regime detection
-- Vector memory for pattern recognition
-- Self-evolving strategies and neural architectures
-- Advanced risk management and position sizing
-- Comprehensive monitoring and logging
+Single entry point providing an interactive console panel to:
+- Initialize engine
+- View performance stats & emotion state
+- Simulate demo trades
+- Run regime detection sample
+- Run optional Playwright smoke test (if installed)
+
+Also supports a non-interactive --auto-demo mode for quick CI smoke.
 """
+from __future__ import annotations
 
-import signal
-import os
-import platform
-from pathlib import Path
-from typing import Optional
 import argparse
-import time
+import asyncio
+import random
+import sys
+from typing import Optional
 
 from rich.console import Console
-from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.panel import Panel
+from rich.prompt import Prompt
+from rich import box
 
-# Import NEXUS components
 from nexus.core.engine import NexusEngine
-from nexus.utils.config import load_config, create_default_config, NexusSettings
-from nexus.utils.logger import setup_nexus_logging, LogConfig
-from nexus.data.trade_history import TradeHistory, AdvancedDataStore
+from nexus.utils.config import load_config, NexusSettings  # fixed typo
+from nexus.intelligence.regime_detector import RegimeDetector
 
-# Set up console for rich output
 console = Console()
-logger = None
 
-def print_banner(version: str = "2.0.0"):
-    """
-    Print NEXUS startup banner.
+# --------------------------- Utility Helpers --------------------------- #
 
-    Args:
-        version: Current NEXUS version
-    """
-    banner = Text()
-    banner.append("🚀 NEXUS", style="bold cyan")
-    banner.append(" - Self-Evolving AI Trader\n", style="bold white")
-    banner.append(f"Version {version} | ", style="dim")
-    banner.append("Powered by Advanced AI", style="bold green")
+def banner(version: str = "2.0.0") -> None:
+    console.print(Panel.fit(
+        f"[bold cyan]NEXUS[/bold cyan] [dim]v{version}[/dim]\n[green]Self-Evolving AI Trader (Master Panel)[/green]",
+        border_style="cyan"))
 
-    console.print(Panel(
-        banner,
-        title="[bold blue]Welcome to NEXUS[/bold blue]",
-        border_style="blue",
-        padding=(1, 2)
-    ))
 
-def print_system_info(config: NexusSettings):
-    """
-    Print system information.
+def build_engine(settings: NexusSettings) -> NexusEngine:
+    return NexusEngine(settings=settings, demo_mode=True, auto_login=False)
 
-    Args:
-        config: NEXUS configuration
-    """
+
+async def init_engine(settings: NexusSettings) -> NexusEngine:
+    engine = build_engine(settings)
+    await engine.initialize_components()
+    return engine
+
+
+def show_stats(engine: NexusEngine) -> None:
+    stats = engine.get_performance_stats()
+    emotions = engine.emotion_state
+    table = Table(title="Performance", box=box.SIMPLE, show_edge=True)
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    for k, v in stats.items():
+        table.add_row(k, str(v))
+    table.add_row("greed (emotion)", f"{emotions.get('greed', 0):.2f}")
+    table.add_row("fear (emotion)", f"{emotions.get('fear', 0):.2f}")
+    table.add_row("confidence (emotion)", f"{emotions.get('confidence', 0):.2f}")
+    console.print(table)
+
+
+def simulate_trades(engine: NexusEngine, n: int = 5) -> None:
+    for _ in range(n):
+        success = random.random() < 0.55
+        profit = round(random.uniform(1, 15), 2) if success else -round(random.uniform(1, 10), 2)
+        engine.record_trade(success=success, profit=profit)
+    console.print(f"[bold green]Simulated {n} trades.[/bold green]")
+
+
+def run_regime_detection() -> None:
     try:
-        import torch
-        import psutil
+        import pandas as pd
+        import numpy as np
+    except Exception:  # pragma: no cover
+        console.print("[yellow]pandas/numpy not available for regime detection sample[/yellow]")
+        return
+    detector = RegimeDetector(n_regimes=4, lookback_periods=75)
+    data = pd.DataFrame({
+        'open': np.random.rand(detector.lookback_periods),
+        'high': np.random.rand(detector.lookback_periods),
+        'low': np.random.rand(detector.lookback_periods),
+        'close': np.random.rand(detector.lookback_periods),
+        'volume': np.random.rand(detector.lookback_periods)
+    })
+    regime = asyncio.run(detector.detect_regime(data))
+    console.print(f"[bold blue]Detected Regime:[/bold blue] {regime}")
 
-        table = Table(title="🖥️ System Information")
-        table.add_column("Component", style="cyan")
-        table.add_column("Information", style="green")
 
-        # System info
-        table.add_row("Operating System", f"{platform.system()} {platform.release()}")
-        table.add_row("Python Version", f"{sys.version.split()[0]}")
-        table.add_row("NEXUS Version", config.version)
-        table.add_row("Environment", config.environment)
-
-        # PyTorch info
-        table.add_row("PyTorch Version", torch.__version__)
-        table.add_row("CUDA Available", "✅ Yes" if torch.cuda.is_available() else "❌ No")
-        if torch.cuda.is_available():
-            table.add_row("GPU Device", torch.cuda.get_device_name())
-            table.add_row("GPU Memory", f"{torch.cuda.get_device_properties(0).total_memory // 1024**3} GB")
-
-        # Hardware info
-        table.add_row("CPU Cores", str(psutil.cpu_count(logical=False)))
-        table.add_row("Logical Processors", str(psutil.cpu_count()))
-        table.add_row("RAM", f"{psutil.virtual_memory().total // 1024**3} GB")
-
-        # Configuration info
-        table.add_row("Config Mode", "Debug" if config.debug_mode else "Production")
-        table.add_row("GPU Enabled", "✅ Yes" if config.enable_gpu else "❌ No")
-        table.add_row("Worker Threads", str(config.num_workers))
-
-        console.print(table)
-    except ImportError as e:
-        console.print(f"[yellow]⚠️ Could not load all system info: {e}[/yellow]")
-
-async def setup_signal_handlers(engine: NexusEngine):
-    """
-    Setup graceful shutdown handlers.
-
-    Args:
-        engine: NEXUS engine instance
-    """
-    def signal_handler(signum, frame):
-        console.print("\n[yellow]🛑 Shutdown signal received. Initiating graceful shutdown...[/yellow]")
-
-        async def shutdown():
+def playwright_smoke() -> None:
+    try:
+        from playwright.sync_api import sync_playwright  # type: ignore
+    except Exception:
+        console.print("[yellow]Playwright not installed.[/yellow]")
+        return
+    try:
+        with sync_playwright() as p:
             try:
-                # If you implement engine.stop(), you can call it here
-                # await engine.stop()
-                console.print("[green]✅ NEXUS shutdown completed successfully[/green]")
-            except Exception as e:
-                console.print(f"[red]❌ Error during shutdown: {e}[/red]")
-            finally:
-                pass  # sys.exit(0) is unreachable in async context
-
-        # Create new event loop for shutdown if current one is closed
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            loop.create_task(shutdown())
-        except:
-            sys.exit(1)
-
-    # Register signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-
-def validate_environment():
-    """
-    Validate system environment and dependencies.
-
-    Returns:
-        bool: True if environment is valid, False otherwise
-    """
-    try:
-        import torch
-        import pandas
-        import numpy
-
-        # Check for CUDA if available
-        if torch.cuda.is_available():
-            device = torch.device("cuda")
-            # Validate CUDA with a small tensor operation
-            x = torch.tensor([1.0, 2.0]).to(device)
-            y = x + x
-
-        return True
-    except Exception as e:
-        console.print(f"[red]❌ Environment validation failed: {e}[/red]")
-        return False
-
-async def start_nexus(config_path: Optional[Path] = None, debug: bool = False):
-    """
-    Start the NEXUS trading system.
-
-    Args:
-        config_path: Path to configuration file
-        debug: Whether to enable debug mode
-    """
-    global logger
-
-    try:
-        # Set up logging
-        log_config = LogConfig(level="DEBUG" if debug else "INFO")
-        logger = setup_nexus_logging(log_config)
-        logger.info("NEXUS starting up...")
-
-        # Load configuration
-        if config_path is None:
-            config_path = Path("config.yaml")
-
-        # Load configuration using the proper function
-        settings = load_config(config_path)
-
-        # Override with debug flag if specified
-        if debug:
-            settings.log_level = "DEBUG"
-
-        # Override with environment variables if set
-        if os.environ.get("NEXUS_DEBUG") in ("1", "true", "True"):
-            settings.log_level = "DEBUG"
-
-        # Print banner and system info
-        print_banner("2.0.0")
-        print_system_info(settings)
-
-        # Validate environment
-        if not validate_environment():
-            logger.error("Environment validation failed.")
-            return
-
-        # Initialize NEXUS engine
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]Initializing NEXUS engine...[/bold blue]"),
-            console=console,
-            transient=True
-        ) as progress:
-            progress.add_task("init", total=None)
-            engine = NexusEngine(settings)
-            await engine.initialize()
-
-        # Setup signal handlers for graceful shutdown
-        await setup_signal_handlers(engine)
-
-        # Start the trading engine
-        logger.info("🚀 Starting trading engine...")
-        await engine.start()
-
-        # Launch CLI dashboard
-        launch_cli_dashboard(engine)
-
-        # Keep the program running
-        while True:
-            await asyncio.sleep(1)
-
-    except Exception as e:
-        console.print(f"[bold red]❌ Critical error: {e}[/bold red]")
-        if debug:
-            import traceback
-            console.print(traceback.format_exc())
-        sys.exit(1)
-
-def launch_cli_dashboard(engine: NexusEngine):
-    """
-    Launch a real-time CLI dashboard for analytics, trade logs, and system control.
-    """
-    trade_history = TradeHistory()
-    data_store = AdvancedDataStore()
-    console = Console()
-    try:
-        while True:
-            console.clear()
-            # Banner
-            print_banner("2.0.0")
-            # System info
-            settings = engine.settings
-            print_system_info(settings)
-            # Performance Table
-            stats = engine.get_performance_stats()
-            perf_table = Table(title="Performance Metrics")
-            for k, v in stats.items():
-                perf_table.add_row(str(k), str(v))
-            console.print(perf_table)
-            # Recent Trades
-            trades = trade_history.get_trade_history(limit=20)
-            trade_table = Table(title="Recent Trades")
-            trade_table.add_column("Time")
-            trade_table.add_column("Asset")
-            trade_table.add_column("Dir")
-            trade_table.add_column("Amt")
-            trade_table.add_column("Result")
-            trade_table.add_column("Profit")
-            for t in trades:
-                trade_table.add_row(str(t['timestamp']), t['asset'], t['direction'], str(t['amount']), t['result'], str(t['profit']))
-            console.print(trade_table)
-            # Regime Info
-            try:
-                asset = trades[0]['asset'] if trades else "EURUSD"
-                candles = engine.quotex.get_candle(asset, 1, 100)
-                regime = engine.regime_detector.detect_regime(candles)
-                console.print(f"[bold blue]Current Regime:[/bold blue] {regime}")
-            except Exception as e:
-                console.print(f"[yellow]Regime detection error: {e}[/yellow]")
-            # Strategy & Risk Model
-            console.print(f"[bold green]Active Strategy:[/bold green] {engine.meta_strategy.__class__.__name__}")
-            console.print(f"[bold green]Risk Model:[/bold green] {engine.risk_registry}")
-            # Log tail
-            try:
-                with open("logs/nexus_20250717.log", "r") as f:
-                    lines = f.readlines()[-20:]
-                    console.print(Panel("".join(lines), title="System Log"))
+                browser = p.chromium.launch(headless=True)
             except Exception:
-                pass
-            # Refresh every 5 seconds
-            time.sleep(5)
-    except KeyboardInterrupt:
-        console.print("[yellow]CLI dashboard exited by user.[/yellow]")
+                console.print("[yellow]Chromium browser not installed for Playwright.[/yellow]")
+                return
+            page = browser.new_page()
+            page.goto("data:text/html,<h1>NEXUS OK</h1>")
+            ok = page.text_content("h1") == "NEXUS OK"
+            browser.close()
+        console.print("[green]Playwright smoke:[/green] " + ("PASS" if ok else "FAIL"))
+    except Exception as e:  # pragma: no cover
+        console.print(f"[red]Playwright error: {e}[/red]")
 
-def create_arg_parser():
-    """
-    Create command line argument parser.
 
-    Returns:
-        ArgumentParser: Configured argument parser
-    """
-    parser = argparse.ArgumentParser(description="NEXUS - Self-Evolving AI Trader for Quotex")
-    parser.add_argument("-c", "--config", type=str, help="Path to configuration file")
-    parser.add_argument("-d", "--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument("--create-config", action="store_true", help="Create default configuration file")
-    parser.add_argument("--version", action="store_true", help="Show version information")
+# --------------------------- Interactive Panel --------------------------- #
+async def interactive_panel(settings: NexusSettings) -> None:
+    engine: Optional[NexusEngine] = None
+    while True:
+        banner(settings.version)
+        console.print("[bold]Menu[/bold]:\n"
+                      "1) Initialize Engine\n"
+                      "2) Show Stats\n"
+                      "3) Simulate Trades\n"
+                      "4) Regime Detection Sample\n"
+                      "5) Playwright Smoke Test\n"
+                      "6) Exit")
+        choice = Prompt.ask("Select", choices=["1","2","3","4","5","6"], default="2")
+        if choice == "1":
+            if engine is None:
+                console.print("[cyan]Initializing engine...[/cyan]")
+                engine = await init_engine(settings)
+                console.print("[green]Engine ready.[/green]")
+            else:
+                console.print("[yellow]Engine already initialized.[/yellow]")
+        elif choice == "2":
+            if engine:
+                show_stats(engine)
+            else:
+                console.print("[yellow]Initialize engine first (option 1).[/yellow]")
+        elif choice == "3":
+            if engine:
+                simulate_trades(engine)
+            else:
+                console.print("[yellow]Initialize engine first (option 1).[/yellow]")
+        elif choice == "4":
+            run_regime_detection()
+        elif choice == "5":
+            playwright_smoke()
+        elif choice == "6":
+            console.print("[bold magenta]Goodbye.[/bold magenta]")
+            break
+        # Small separator
+        console.print(Panel.fit("Press Enter to continue", style="dim"))
+        try:
+            input()
+        except EOFError:
+            break
 
-    return parser
 
-def main():
-    """Main entry point."""
-    parser = create_arg_parser()
-    args = parser.parse_args()
+# --------------------------- Auto Demo Mode --------------------------- #
+async def auto_demo(settings: NexusSettings) -> None:
+    console.print("[cyan]Running auto demo...[/cyan]")
+    engine = await init_engine(settings)
+    simulate_trades(engine, n=10)
+    show_stats(engine)
+    run_regime_detection()
+    playwright_smoke()
+    console.print("[green]Auto demo complete.[/green]")
 
-    # Handle version request
-    if args.version:
-        print("NEXUS v2.0.0 - Self-Evolving AI Trader")
-        sys.exit(0)
 
-    # Handle config creation request
-    if args.create_config:
-        config_path = args.config or "config.yaml"
-        create_default_config(config_path)
-        print(f"Created default configuration file at: {config_path}")
-        sys.exit(0)
+# --------------------------- CLI Entry --------------------------- #
 
-    # Determine config path
-    config_path = None
-    if args.config:
-        config_path = Path(args.config)
-        if not config_path.exists():
-            print(f"Configuration file not found: {config_path}")
-            sys.exit(1)
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="NEXUS Master Launch Panel")
+    p.add_argument('-c', '--config', type=str, help='Path to config YAML (default: config.yaml)')
+    p.add_argument('--auto-demo', action='store_true', help='Run non-interactive demo and exit')
+    return p.parse_args()
 
-    # Start NEXUS
-    try:
-        asyncio.run(start_nexus(config_path, args.debug))
-    except KeyboardInterrupt:
-        print("\nShutdown requested. Exiting...")
-    except Exception as e:
-        print(f"Fatal error: {e}")
-        sys.exit(1)
 
-if __name__ == "__main__":
-    import sys
-    import asyncio
-    from PySide6.QtWidgets import QApplication
-    from nexus.gui.main_window import NexusMainWindow
-    from nexus.core.engine import NexusEngine
-    config = load_config()
-    engine = NexusEngine(settings=config)
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(engine.initialize_components())
-    app = QApplication(sys.argv)
-    window = NexusMainWindow(engine=engine)
-    window.show()
-    sys.exit(app.exec())
+def main() -> None:
+    args = parse_args()
+    settings = load_config(args.config) if args.config else load_config()
+    if args.auto_demo:
+        asyncio.run(auto_demo(settings))
+    else:
+        try:
+            asyncio.run(interactive_panel(settings))
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Interrupted.[/yellow]")
+
+
+if __name__ == '__main__':
+    main()

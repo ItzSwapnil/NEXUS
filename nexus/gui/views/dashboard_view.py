@@ -42,6 +42,8 @@ class DashboardView(QWidget):
         self.regime_detector = RegimeDetector(sensitivity=0.5)
         self.trade_history = TradeHistory()
         self.data_store = AdvancedDataStore()
+        self.selected_asset = "EURUSD"
+        self.selected_timeframe = 1
         self.setStyleSheet("font-size: 18px; color: #e0e0e0;")
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
@@ -97,6 +99,7 @@ class DashboardView(QWidget):
         self.controls_layout = QVBoxLayout()
         self.controls_tab.setLayout(self.controls_layout)
         self.tabs.addTab(self.controls_tab, "Controls")
+        # Strategy controls
         self.strategy_combo = QComboBox()
         self.strategy_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.strategy_combo.addItem("meta_strategy")
@@ -112,6 +115,18 @@ class DashboardView(QWidget):
         self.switch_btn = QPushButton("Switch Strategy")
         self.controls_layout.addWidget(self.switch_btn)
         self.switch_btn.clicked.connect(self.switch_strategy)
+        # New: Asset selector
+        self.controls_layout.addWidget(QLabel("Select Asset:"))
+        self.asset_combo = QComboBox()
+        self.controls_layout.addWidget(self.asset_combo)
+        # New: Timeframe selector
+        self.controls_layout.addWidget(QLabel("Select Timeframe (min):"))
+        self.timeframe_combo = QComboBox()
+        for tf in [1, 5, 15, 30, 60]:
+            self.timeframe_combo.addItem(str(tf))
+        self.timeframe_combo.setCurrentText(str(self.selected_timeframe))
+        self.controls_layout.addWidget(self.timeframe_combo)
+        # Risk model
         self.risk_combo = QComboBox()
         self.risk_combo.addItems(["kelly", "var", "emotional"])
         self.controls_layout.addWidget(QLabel("Select Risk Model:"))
@@ -149,12 +164,7 @@ class DashboardView(QWidget):
         # Candle fetching: only start after login is ready, and always from the main thread
         def start_candle_thread():
             # This must run in the main thread
-            self.candle_fetcher = CandleFetcher(self.quotex_adapter, "EURUSD", 1, 100)
-            self.candle_fetcher.candles_fetched.connect(self._update_chart)
-            self.candle_thread = QThread(self)
-            self.candle_fetcher.moveToThread(self.candle_thread)
-            self.candle_thread.started.connect(self.candle_fetcher.fetch_candles)
-            self.candle_thread.start()
+            self._start_candle_fetcher()
 
         def wait_and_start():
             self.quotex_adapter.login_ready.wait()
@@ -200,11 +210,43 @@ class DashboardView(QWidget):
                 asyncio.set_event_loop(None)
         threading.Thread(target=fetch, daemon=True).start()
 
+    def _start_candle_fetcher(self):
+        # Stop existing thread if running
+        if hasattr(self, 'candle_fetcher') and hasattr(self, 'candle_thread') and self.candle_thread.isRunning():
+            try:
+                self.candle_fetcher.stop()
+                self.candle_thread.quit()
+                self.candle_thread.wait()
+            except Exception:
+                pass
+        # Start new fetcher for selected asset/timeframe
+        self.candle_fetcher = CandleFetcher(self.quotex_adapter, self.selected_asset, self.selected_timeframe, 100)
+        self.candle_fetcher.candles_fetched.connect(self._update_chart)
+        self.candle_thread = QThread(self)
+        self.candle_fetcher.moveToThread(self.candle_thread)
+        self.candle_thread.started.connect(self.candle_fetcher.fetch_candles)
+        self.candle_thread.start()
+
+    def _on_asset_changed(self, asset: str):
+        if not asset:
+            return
+        self.selected_asset = asset
+        self._start_candle_fetcher()
+        self._refresh_regime()
+
+    def _on_timeframe_changed(self, tf_text: str):
+        try:
+            tf = int(tf_text)
+        except Exception:
+            return
+        self.selected_timeframe = tf
+        self._start_candle_fetcher()
+        self._refresh_regime()
+
     def _refresh_regime(self):
         def fetch():
             try:
-                # Use only the sync candle fetching method
-                candles = self.quotex_adapter.get_candle("EURUSD", 1, 100, period=60)
+                candles = self.quotex_adapter.get_candle(self.selected_asset, self.selected_timeframe, 100, period=60)
                 if not candles or not isinstance(candles, list) or len(candles) == 0:
                     self.update_regime_signal.emit("No candle data available.")
                     return

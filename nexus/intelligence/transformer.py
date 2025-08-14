@@ -14,11 +14,10 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Tuple, Any
-from datetime import datetime, timedelta
+from typing import Dict, Optional, Tuple, Any
 import math
-import asyncio
 from pathlib import Path
+import builtins
 
 from nexus.utils.logger import get_nexus_logger
 from nexus.utils.technical import calculate_features
@@ -330,20 +329,48 @@ class MarketPredictor:
 
         normalized_features = (features - self.feature_means) / self.feature_stds
 
-        # Create sequences
-        X = []
-        for i in range(len(normalized_features) - self.lookback_periods + 1):
-            X.append(normalized_features[i:i + self.lookback_periods])
-
-        # Convert to torch tensor
-        if X:
-            X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
+        # Create sequences efficiently using numpy and avoid Python lists
+        if len(normalized_features) >= self.lookback_periods:
+            num_sequences = len(normalized_features) - self.lookback_periods + 1
+            # Create a 3D array [num_sequences, lookback, feature_dim]
+            X_np = np.lib.stride_tricks.sliding_window_view(
+                normalized_features, (self.lookback_periods, normalized_features.shape[1])
+            )
+            # sliding_window_view result shape: [num_sequences, 1, lookback, feature_dim]
+            # Squeeze the size-1 dimension
+            X_np = X_np.reshape(num_sequences, self.lookback_periods, normalized_features.shape[1]).astype(np.float32)
+            X_tensor = torch.from_numpy(X_np).to(self.device)
         else:
             # Create empty tensor with correct shape if no sequences can be created
-            X_tensor = torch.zeros((0, self.lookback_periods, len(selected_cols)),
-                                  dtype=torch.float32).to(self.device)
+            X_tensor = torch.zeros((0, self.lookback_periods, len(selected_cols)), dtype=torch.float32).to(self.device)
 
         return X_tensor
+
+    def update_from_trade(self, trade_record: Dict[str, Any]):
+        """Lightweight online update hook. Records outcomes and can adjust LR.
+        This is intentionally conservative to avoid destabilizing the model during live trading.
+        """
+        try:
+            success = bool(trade_record.get('success', False))
+            profit = float(trade_record.get('profit', 0.0))
+            self.eval_history.append({
+                'timestamp': trade_record.get('timestamp'),
+                'success': success,
+                'profit': profit,
+                'asset': trade_record.get('asset'),
+                'timeframe': trade_record.get('timeframe')
+            })
+            # Simple adaptive LR: decrease on recent losses, increase slightly on wins
+            if len(self.eval_history) >= 5:
+                recent = self.eval_history[-5:]
+                win_rate = builtins.sum(1 for r in recent if r['success']) / 5.0
+                for g in self.optimizer.param_groups:
+                    base_lr = g.get('initial_lr', g['lr'])
+                    # Keep within [1e-5, 5e-4]
+                    new_lr = float(np.clip(base_lr * (0.9 if win_rate < 0.4 else 1.05), 1e-5, 5e-4))
+                    g['lr'] = new_lr
+        except Exception:
+            pass
 
     def save_model(self):
         """Save the model to disk."""

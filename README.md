@@ -201,27 +201,57 @@ uv pip install -e .
 
 # Usage Examples
 
+## Master Launch Panel (Interactive)
+```bash
+uv run python -m nexus.main
+```
+
+## Master Launch Panel (Auto Demo / CI Smoke)
+```bash
+uv run python -m nexus.main --auto-demo
+```
+
 ## Authenticate and Check Balance
 ```python
-from nexus.client import NexusClient
-client = NexusClient(email="your@email.com", password="yourpassword", lang="en")
-print(client.get_balance())
+import asyncio
+from nexus.client import QuotexClient
+
+async def main():
+    client = QuotexClient(email="you@example.com", password="yourpassword", lang="en")
+    ok = await client.connect()
+    if ok:
+        info = await client.update_account_info()
+        print("Balance:", info["balance"], info["currency"])
+    await client.disconnect()
+
+asyncio.run(main())
 ```
 
-## Run a Backtest
+## Simulate Trades via Engine Stub
 ```python
-from nexus.core.engine import backtest
-results = backtest(strategy="meta_strategy", start_date="2024-01-01", end_date="2024-06-01")
-print(results.summary())
+import asyncio
+from nexus.utils.config import load_config
+from nexus.core.engine import NexusEngine
+
+async def run():
+    settings = load_config()
+    engine = NexusEngine(settings=settings)
+    await engine.initialize_components()
+    for _ in range(5):
+        engine.record_trade(success=True, profit=5.0)
+    print(engine.get_performance_stats())
+
+asyncio.run(run())
 ```
 
-## Launch the GUI
-```bash
-uv python -m nexus.gui.launch_gui
-```
+## (Placeholder) Backtesting
+Backtesting helpers referenced in earlier versions have not yet been implemented in the current lightweight engine layer. A future module will expose: `run_backtest(strategy, start, end, **params)`.
+
+## Launch the GUI (If/When Implemented)
+The previous GUI entry point may not be fully wired after refactors. Track GUI progress in issues. (TODO)
 
 ## Add a Custom Strategy
-- Place your strategy in `nexus/strategies/` and register it in `nexus/registry.py`.
+- Place your strategy in `nexus/strategies/` and register it via your own initialization script (registry helpers are being simplified).
 
 ---
 
@@ -280,7 +310,7 @@ A: NEXUS is designed for Quotex via `pyquotex`, but the architecture is modularâ
 A: See [Extending NEXUS](#extending-nexus) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Q: Is there a REST API?**
-A: [TODO: Not yet, but the architecture supports adding one easily.]
+A: Not currently. Previous FastAPI/uvicorn endpoints were removed to simplify the stack. Use the in-process Python API and the master launch panel. A minimal API layer could return in future releases.
 
 **Q: How does NEXUS self-evolve?**
 A: [TODO: Through online learning, neuroevolution, and adversarial/self-play training.]

@@ -8,18 +8,16 @@ This module provides enhanced configuration management with:
 - Configuration encryption for sensitive data
 """
 
-import os
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass
-import logging
+from typing import Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from omegaconf import OmegaConf
+from nexus.utils.logger import get_nexus_logger
 
-logger = logging.getLogger("nexus.utils.config")
+logger = get_nexus_logger("nexus.utils.config")
 
 class QuotexSettings(BaseModel):
     """Quotex connection settings."""
@@ -100,9 +98,13 @@ class NexusSettings(BaseSettings):
     version: str = "2.0.0"
     debug_mode: bool = False
 
-    class Config:
-        env_file = ".env"
-        env_nested_delimiter = "__"
+    # Pydantic v2 settings config
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_nested_delimiter="__",
+        extra="ignore"
+    )
+
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:
     """
@@ -128,7 +130,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
             config_data = yaml.safe_load(f)
 
         # Convert to OmegaConf for advanced features
-        omega_config = OmegaConf.create(config_data)
+        _ = OmegaConf.create(config_data)
 
         # Create Pydantic settings from loaded data
         settings = NexusSettings(**config_data)
@@ -140,6 +142,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
         logger.error(f"Error loading config: {e}")
         logger.info("Using default configuration")
         return create_default_config()
+
 
 def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
     """
@@ -169,6 +172,7 @@ def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
         logger.info(f"Default configuration saved to {save_path}")
 
     return default_config
+
 
 def validate_config(config: NexusSettings) -> bool:
     """

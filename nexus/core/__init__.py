@@ -1,12 +1,16 @@
 """
-Core module for the NEXUS trading system.
+Core module for the NEXUS trading system (lightweight init).
 
-This package contains the core components of the NEXUS system,
-including the main engine, memory management, and evolutionary algorithms.
+Avoid importing heavy optional dependencies (faiss, etc.) at package import time.
+Import components explicitly where needed, e.g.:
+    from nexus.core.engine import NexusEngine
 """
 
-from nexus.core.engine import NexusEngine
-from nexus.core.memory import VectorMemory
-from nexus.core.evolution import EvolutionEngine
+try:
+    from .engine import NexusEngine  # noqa: F401
+except Exception:  # pragma: no cover
+    # Provide a placeholder to prevent import explosions if dependencies missing
+    class NexusEngine:  # type: ignore
+        pass
 
-__all__ = ['NexusEngine', 'VectorMemory', 'EvolutionEngine']
+__all__ = ["NexusEngine"]
