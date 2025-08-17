@@ -1,8 +1,9 @@
 """
 Risk management module for NEXUS.
 
-This module handles risk management for the NEXUS trading system, including
-position sizing, risk assessment, and trade filtering.
+EXPERIMENTAL / PARTIALLY INTEGRATED:
+This module is not yet wired into NexusEngine's live sizing path.
+Future integration will reconcile overlapping sizing logic.
 """
 
 import logging

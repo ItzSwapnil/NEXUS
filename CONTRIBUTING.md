@@ -1,124 +1,56 @@
-# Contributing to NEXUS
+# Contributing to NEXUS (Lightweight Alpha)
 
-<p align="center">
-  <img src="https://img.shields.io/badge/contributions-welcome-brightgreen" alt="Contributions Welcome" />
-  <img src="https://img.shields.io/badge/style-guide-enforced-blue" alt="Style Guide Enforced" />
-  <img src="https://img.shields.io/badge/tests-required-important" alt="Tests Required" />
-  <img src="https://img.shields.io/badge/ci%2Fcd-github%20actions-blueviolet" alt="CI/CD" />
-</p>
+Thanks for your interest. The project is a minimal sandbox right now; focus contributions on **implemented scope** (catalog, payouts, engine, exploration, GUI polish) or small incremental roadmap steps.
 
----
+## Quick Start
+```bash
+uv venv .venv
+. .venv/Scripts/Activate.ps1   # PowerShell
+uv pip install -e .
+pytest -q   # ensure 21 tests pass
+```
+Target Python: **3.13.6**.
 
-Thank you for your interest in making NEXUS better! We welcome all forms of contributions: code, documentation, bug reports, feature requests, design, and more. This guide will help you get started and ensure your contributions are effective and appreciated.
+## Contribution Guidelines
+- Keep PRs small & focused (easier review).
+- Add / adjust tests when changing logic.
+- Preserve deterministic behaviour for existing tests.
+- Avoid adding heavy dependencies without discussion.
+- Update README / SPEC only for *implemented* features.
 
----
+## Code Style
+- PEP 8 + type hints.
+- Prefer clear, small functions.
+- Log sparingly; keep console noise low for tests.
 
-## 📋 Table of Contents
-- [How to Contribute](#how-to-contribute)
-- [Development Setup](#development-setup)
-- [Coding Standards](#coding-standards)
-- [Pull Request Process](#pull-request-process)
-- [Reporting Issues](#reporting-issues)
-- [Feature Requests](#feature-requests)
-- [Style Guide](#style-guide)
-- [Community Standards](#community-standards)
-- [Contact](#contact)
+## Tests
+Run full test suite before opening a PR:
+```bash
+pytest -q
+```
+If adding GUI features, consider adding a lightweight non-blocking smoke test (future enhancement—currently none).
 
----
+## Commit Messages
+Readable imperative style (e.g., `engine: clamp emotion values`, `docs: prune outdated roadmap`). Squash fixups prior to merge.
 
-## 🚦 How to Contribute
+## What *Not* To Add (Yet)
+- Large RL / evolution frameworks
+- Complex backtesting engines
+- Cryptic meta-programming abstractions
+- Unused stubs or speculative doc sections
 
-1. **Fork the repository** and create your branch from `main`.
-2. **Clone your fork** and set up the project locally.
-3. **Write clear, concise commit messages** ([Conventional Commits](https://www.conventionalcommits.org/)).
-4. **Test your changes** thoroughly (unit, integration, and regression tests).
-5. **Submit a pull request** with a detailed description, screenshots, and references to issues.
+## Reporting Issues
+Open a GitHub issue with:
+- Summary
+- Reproduction steps (if bug)
+- Expected vs actual
+- Environment (OS, Python, commit hash)
 
----
+## Security
+No secrets should be committed. Current code does not persist credentials; see SECURITY.md for reporting process.
 
-## 🛠️ Development Setup
-
-- **Python 3.13.5** is required.
-- Install dependencies:
-  ```bash
-  uv venv .venv
-  source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-  uv pip install -e .
-  ```
-- Run tests:
-  ```bash
-  uv python -m pytest tests/
-  ```
-- Use a virtual environment for isolation.
-- Use pre-commit hooks if available.
-
----
-
-## 👩‍💻 Coding Standards
-
-- Follow [PEP8](https://www.python.org/dev/peps/pep-0008/) and use [Black](https://black.readthedocs.io/) for formatting.
-- Write docstrings for all public classes and functions (Google style preferred).
-- Use type hints everywhere.
-- Keep functions small, focused, and well-tested.
-- Add or update tests for your code.
-- Use descriptive variable and function names.
-- Organize imports: standard, third-party, local.
-- Keep lines under 100 characters.
-- Document all public APIs and modules.
+## License
+By contributing you agree your work is licensed under the project MIT License.
 
 ---
-
-## 📝 Pull Request Process
-
-- Ensure your branch is up to date with `main`.
-- Include a clear description of your changes and the motivation.
-- Reference related issues (e.g., `Closes #123`).
-- Pass all tests and CI checks.
-- Be responsive to feedback and requested changes.
-- Fill out the [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md).
-- Squash fixup commits before merging.
-
----
-
-## 🐞 Reporting Issues
-
-- Use the [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.md).
-- Provide as much detail as possible (logs, OS, steps to reproduce).
-- Be respectful and constructive.
-
----
-
-## 🚀 Feature Requests
-
-- Use the [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.md).
-- Explain the use case and potential impact.
-- Include mockups or diagrams if possible.
-
----
-
-## 🎨 Style Guide
-
-- Use consistent formatting and naming conventions.
-- Comment complex logic and decisions.
-- Write clear, concise, and helpful documentation.
-- Prefer explicit over implicit code.
-- Use English for all code, comments, and documentation.
-
----
-
-## 🌐 Community Standards
-
-- See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for our standards.
-- Be welcoming, inclusive, and respectful.
-- Help others and ask for help when needed.
-
----
-
-## 📫 Contact
-
-- For questions, join GitHub Discussions or email <community@nexus.ai>.
-- For security issues, see [SECURITY.md](SECURITY.md).
-
----
-
-> _Thank you for helping us build the future of AI trading!_
+Focus on making the existing small core *solid* before expanding scope.

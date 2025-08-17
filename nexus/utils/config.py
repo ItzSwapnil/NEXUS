@@ -39,6 +39,36 @@ class TradingSettings(BaseModel):
     base_trade_amount: float = 5.0
     max_risk_per_trade_percent: float = 2.0
     max_loss_percent: float = 5.0
+    # Spec additions
+    payout_threshold: float = 80.0
+    payout_poll_interval_seconds: int = 30
+    max_exploration_capital_pct: float = 2.0
+    # Realism toggle (default off to keep tests deterministic)
+    use_live_catalog: bool = False
+    # Autonomous trading (GUI loop)
+    auto_trade_enabled: bool = False
+    auto_trade_interval_seconds: int = 30
+
+class ExplorationSettings(BaseModel):
+    """Exploration / exploitation controller settings (Spec §3)."""
+    base_epsilon: float = 0.15
+    k_uncertainty: float = 0.35
+    min_epsilon: float = 0.01
+    max_epsilon: float = 0.6
+    promotion_windows: int = 3
+    fitness_promotion_threshold: float = 0.65
+
+class FitnessSettings(BaseModel):
+    """Weights for composite fitness function (Spec §4)."""
+    alpha_sharpe: float = 0.25
+    alpha_sortino: float = 0.2
+    alpha_profit_factor: float = 0.15
+    alpha_payout: float = 0.15
+    beta_mdd: float = 0.1
+    beta_ulcer: float = 0.05
+    beta_turnover: float = 0.05
+    gamma_slippage: float = 0.03
+    gamma_constraint: float = 0.02
 
 class AISettings(BaseModel):
     """AI model configuration settings."""
@@ -88,6 +118,8 @@ class NexusSettings(BaseSettings):
     transformer: TransformerSettings = TransformerSettings()
     rl_agent: RLAgentSettings = RLAgentSettings()
     evolution: EvolutionSettings = EvolutionSettings()
+    exploration: ExplorationSettings = ExplorationSettings()
+    fitness: FitnessSettings = FitnessSettings()
     environment: str = "development"
     enable_gpu: bool = True
     num_workers: int = 4
@@ -193,6 +225,9 @@ def validate_config(config: NexusSettings) -> bool:
         # Validate trading settings
         if config.trading.max_risk_per_trade_percent <= 0 or config.trading.max_risk_per_trade_percent > 100:
             logger.error("Risk per trade percentage must be between 0 and 100")
+            return False
+        if config.trading.payout_threshold <= 0 or config.trading.payout_threshold > 100:
+            logger.error("Payout threshold must be between 0 and 100")
             return False
 
         # Validate AI settings

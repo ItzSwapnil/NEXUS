@@ -98,5 +98,10 @@ async def main():
 
     parser.print_help()
 
-if __name__ == "__main__":
+
+def run():  # pragma: no cover - thin wrapper
+    """Synchronous entry point for console script 'nexus-cli'."""
+    asyncio.run(main())
+
+if __name__ == "__main__":  # pragma: no cover
     asyncio.run(main())

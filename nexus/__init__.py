@@ -1,14 +1,18 @@
-"""Lightweight NEXUS package initializer.
+"""NEXUS core package initialization"""
 
-Heavy imports have been removed to avoid pulling optional / large dependency
-chains during simple imports (e.g. unit tests needing only NexusEngine).
-
-Access core components explicitly, e.g.:
-    from nexus.core.engine import NexusEngine
-
-Version metadata is kept here.
-"""
+# This file ensures that the nexus directory is treated as a package
+# for Python module discovery. This is particularly important for
+# local development where the package is installed in development mode.
 
 __version__ = "2.0.0"
-
-__all__ = ["__version__"]
+__all__ = [
+    "core",
+    "gui",
+    "intelligence",
+    "strategies",
+    "utils",
+    "adapters",
+    "data",
+    "settings",
+    "models"
+]

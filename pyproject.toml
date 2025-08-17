@@ -2,34 +2,34 @@
 name = "nexus"
 version = "2.0.0"
 description = "NEXUS: Fully Dynamic, Self-Evolving AI Trader for Quotex"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13.6"
 dependencies = [
-  "pyquotex @ git+https://github.com/cleitonleonel/pyquotex.git@8706f2c4c5db41584495de44f255cb51e9e711ea",
-  "PySide6",
-  "torch",
-  "tensorflow",
-  "scikit-learn",
-  "pandas",
-  "duckdb",
-  "chromadb",
   # Config & validation libs
   "pydantic",
   "pydantic-settings",
   "omegaconf",
+  "pandas",
+  "duckdb",
+  "PySide6",
   "pyyaml",
-  # Test plugins
+  # Test plugins (kept for now; may move to extras later)
   "pytest",
   "pytest-asyncio",
   # Tooling / docs
   "rich",
   "loguru",
-  "ruff",
   "mypy",
   "Sphinx",
-  # Web automation only
+  # Web automation only (optional; retained until extras refactor)
   "playwright",
   "pandas-stubs==2.3.0.250703",
 ]
+
+[project.scripts]
+# Launch GUI directly
+nexus = "nexus.main:main"
+# CLI (async wrapper)
+nexus-cli = "nexus.cli:run"
 
 [tool.uv]
 # UV-specific settings if needed

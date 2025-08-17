@@ -1,8 +1,13 @@
 """
 Configuration module for NEXUS.
 
-This module defines the configuration structure using Pydantic models and provides
-functions to load configuration from YAML files.
+DEPRECATION NOTICE:
+This legacy configuration system is slated for consolidation.
+Active code and tests primarily use `nexus.utils.config` (NexusSettings).
+New development SHOULD prefer `nexus.utils.config`.
+This module remains temporarily for backward compatibility with
+older stubs (risk, strategies, models). It may be removed once
+those modules are refactored to depend solely on NexusSettings.
 """
 
 import logging
@@ -161,11 +166,16 @@ class WebConfig(BaseModel):
     auth_required: bool = False
 
 class StrategyConfig(BaseModel):
-    """Configuration for trading strategies."""
+    """Configuration for trading strategies.
+
+    Note: Extended with optional assets/models to align with strategies.py usage.
+    """
     name: str
     enabled: bool = True
     parameters: Dict[str, Any] = Field(default_factory=dict)
     timeframes: List[int] = Field(default_factory=lambda: [60, 300])
+    assets: List[str] = Field(default_factory=list)
+    models: List[str] = Field(default_factory=list)
 
     model_config = ConfigDict(frozen=True)
 

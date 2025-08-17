@@ -20,5 +20,5 @@ RUN uv sync --frozen
 # Copy source
 COPY . /app
 
-# Master panel (no web server) – use auto-demo by default
-CMD ["uv", "run", "python", "-m", "nexus.main", "--auto-demo"]
+# Launch GUI (single entrypoint) – can be overridden at runtime
+CMD ["uv", "run", "python", "-m", "nexus.main"]

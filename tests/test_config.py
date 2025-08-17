@@ -2,7 +2,7 @@ import pytest
 from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings, AISettings, MemorySettings, RegimeDetectorSettings, TransformerSettings, RLAgentSettings, EvolutionSettings
 
 
-def creates_valid_settings_with_minimum_fields():
+def test_creates_valid_settings_with_minimum_fields():
     settings = NexusSettings(
         quotex=QuotexSettings(email='a@b.com', password='pw'),
         trading=TradingSettings()
@@ -12,17 +12,17 @@ def creates_valid_settings_with_minimum_fields():
     assert settings.trading.base_trade_amount == 5.0
 
 
-def raises_error_if_quotex_missing():
+def test_raises_error_if_quotex_missing():
     with pytest.raises(Exception):
         NexusSettings(trading=TradingSettings())
 
 
-def raises_error_if_trading_missing():
+def test_raises_error_if_trading_missing():
     with pytest.raises(Exception):
         NexusSettings(quotex=QuotexSettings(email='a@b.com', password='pw'))
 
 
-def accepts_all_fields_and_defaults():
+def test_accepts_all_fields_and_defaults():
     settings = NexusSettings(
         quotex=QuotexSettings(email='a@b.com', password='pw'),
         trading=TradingSettings(),
@@ -48,7 +48,7 @@ def accepts_all_fields_and_defaults():
     assert settings.version == '3.0.0'
 
 
-def string_fields_are_trimmed_and_valid():
+def test_string_fields_are_trimmed_and_valid():
     settings = NexusSettings(
         quotex=QuotexSettings(email='  a@b.com  ', password=' pw '),
         trading=TradingSettings()
@@ -57,7 +57,7 @@ def string_fields_are_trimmed_and_valid():
     assert settings.quotex.password.strip() == 'pw'
 
 
-def default_values_are_set_for_optional_fields():
+def test_default_values_are_set_for_optional_fields():
     settings = NexusSettings(
         quotex=QuotexSettings(email='a@b.com', password='pw'),
         trading=TradingSettings()
@@ -68,4 +68,3 @@ def default_values_are_set_for_optional_fields():
     assert settings.transformer.batch_size == 128
     assert settings.rl_agent.hidden_dim == 64
     assert settings.evolution.mutation_rate == 0.1
-

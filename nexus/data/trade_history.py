@@ -3,10 +3,12 @@ from typing import List, Dict
 import duckdb
 import threading
 import os
+from pathlib import Path
 
 class TradeHistory:
     def __init__(self, db_path: str = "data/trade_history.db"):
         self.db_path = db_path
+        Path(os.path.dirname(self.db_path) or ".").mkdir(parents=True, exist_ok=True)
         self._initialize_db()
 
     def _initialize_db(self):
