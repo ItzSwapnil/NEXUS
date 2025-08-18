@@ -11,18 +11,7 @@ dependencies = [
   "pandas",
   "duckdb",
   "PySide6",
-  "pyyaml",
-  # Test plugins (kept for now; may move to extras later)
-  "pytest",
-  "pytest-asyncio",
-  # Tooling / docs
-  "rich",
-  "loguru",
-  "mypy",
-  "Sphinx",
-  # Web automation only (optional; retained until extras refactor)
-  "playwright",
-  "pandas-stubs==2.3.0.250703",
+  "pyyaml"
 ]
 
 [project.scripts]
@@ -33,3 +22,17 @@ nexus-cli = "nexus.cli:run"
 
 [tool.uv]
 # UV-specific settings if needed
+
+[tool.uv.dependency-group.dev]
+dependencies = [
+  "pytest",
+  "pytest-asyncio",
+  "rich",
+  "loguru",
+  "mypy",
+  "Sphinx",
+  "playwright",
+  "pandas-stubs==2.3.0.250703",
+  "flake8"
+]
+
