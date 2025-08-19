@@ -17,7 +17,6 @@ from typing import Dict, List, Optional, Union, Any
 
 import yaml
 from pydantic import BaseModel, Field, field_validator, ConfigDict
-from pydantic_settings import BaseSettings
 
 logger = logging.getLogger("nexus.config")
 

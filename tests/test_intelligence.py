@@ -1,7 +1,6 @@
 import pytest
 import numpy as np
 import pandas as pd
-import asyncio
 from nexus.intelligence.transformer import MarketPredictor
 from nexus.intelligence.rl_agent import RLAgent
 from nexus.intelligence.regime_detector import RegimeDetector

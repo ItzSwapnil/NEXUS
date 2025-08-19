@@ -7,7 +7,6 @@ safeguards so tests do not require historical buffers.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, Any
 
 @dataclass
 class FitnessWeights:
@@ -42,7 +41,8 @@ class CandidateState:
     promotion_windows_ok: int = 0  # consecutive windows passing threshold
 
 # Simple clamp for general use
-_clamp = lambda v, lo, hi: hi if v > hi else lo if v < lo else v
+def _clamp(v, lo, hi):
+    return hi if v > hi else lo if v < lo else v
 
 def _norm_positive(x: float, max_ref: float, min_ref: float = 0.0) -> float:
     if max_ref <= min_ref:

@@ -14,22 +14,16 @@ This module provides sophisticated logging capabilities with:
 import logging
 import logging.handlers
 import json
-import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
-from dataclasses import dataclass, asdict
+from typing import Dict, Any, Optional, Union
+from dataclasses import dataclass
 import time
-import traceback
-import codecs
 from contextlib import contextmanager
 
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
 from loguru import logger as loguru_logger
 
 # Initialize Rich console

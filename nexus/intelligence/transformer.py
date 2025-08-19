@@ -640,7 +640,7 @@ class MarketPredictor:
             elif mean_reversion > 0.5:
                 reason = f"Oversold condition with expected reversal ({mean_reversion:.2f})"
             else:
-                reason = f"Bullish pattern recognized"
+                reason = "Bullish pattern recognized"
 
         elif signal == "put":
             if momentum < -0.3:
@@ -650,7 +650,7 @@ class MarketPredictor:
             elif mean_reversion < -0.3:
                 reason = f"Overbought condition with expected reversal ({mean_reversion:.2f})"
             else:
-                reason = f"Bearish pattern recognized"
+                reason = "Bearish pattern recognized"
 
         else:  # hold
             if abs(trend) < 0.2:
@@ -658,7 +658,7 @@ class MarketPredictor:
             elif volatility > 0.7:
                 reason = f"High volatility, waiting for clarity ({volatility:.2f})"
             else:
-                reason = f"No actionable pattern recognized"
+                reason = "No actionable pattern recognized"
 
         # Add regime context if available
         if regime:

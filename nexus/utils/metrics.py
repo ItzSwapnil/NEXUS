@@ -7,8 +7,7 @@ with Python 3.13, replacing the deprecated empyrical package functionality.
 
 import numpy as np
 import pandas as pd
-from typing import Union, Optional
-import warnings
+from typing import Union
 
 def annual_return(returns: Union[pd.Series, np.ndarray], period: str = 'daily') -> float:
     """

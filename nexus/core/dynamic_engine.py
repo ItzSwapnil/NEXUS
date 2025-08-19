@@ -1,7 +1,6 @@
 import asyncio
-import os
-from typing import Dict, List, Any, Optional, Union, Protocol
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Protocol
+from datetime import datetime
 import logging
 from dataclasses import dataclass
 from nexus.catalog.ingest import get_market_catalog

@@ -10,13 +10,10 @@ This module implements advanced evolutionary algorithms for:
 """
 
 import numpy as np
-import torch
-import torch.nn as nn
 from typing import Dict, List, Tuple, Optional, Any, Callable
 from dataclasses import dataclass, field
 import random
 from copy import deepcopy
-import pickle
 from pathlib import Path
 import json
 import time
@@ -474,9 +471,6 @@ class NeuralArchitectureSearch:
             num_assets=5
         )
 
-
-import random
-from typing import List, Dict
 
 class NeuroEvolution:
     def __init__(self, population_size: int, mutation_rate: float, crossover_rate: float):

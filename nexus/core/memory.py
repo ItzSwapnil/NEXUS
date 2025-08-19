@@ -14,15 +14,13 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from typing import Dict, List, Tuple, Any, Optional, Union, Set
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Union, Set
+from datetime import datetime
 from pathlib import Path
 import asyncio
 import json
 import time
 import uuid
-import pickle
-from concurrent.futures import ThreadPoolExecutor
 
 # Vector databases
 import faiss
@@ -33,10 +31,9 @@ try:
 except ImportError:
     LANCE_AVAILABLE = False
 
-from sentence_transformers import SentenceTransformer
 
 # Embeddings and preprocessing
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
 from nexus.utils.logger import get_nexus_logger, PerformanceLogger

@@ -5,7 +5,7 @@ Provides a simple in-memory replay buffer and placeholder learning hook.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Deque, Any, Dict
+from typing import Deque, Any, Dict
 from collections import deque
 import numpy as np
 

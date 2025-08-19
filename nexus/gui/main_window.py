@@ -5,7 +5,7 @@
 from __future__ import annotations
 import asyncio
 from datetime import datetime
-from typing import Optional, List
+from typing import List
 
 from nexus.utils.config import NexusSettings
 from nexus.utils.logger import get_nexus_logger

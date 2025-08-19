@@ -7,8 +7,7 @@ without relying on external TA libraries.
 
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Optional, Union, Tuple
-from datetime import datetime
+from typing import Tuple
 
 def exponential_moving_average(data: np.ndarray, span: int) -> np.ndarray:
     """
@@ -331,9 +330,9 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     df['price_pattern'] = np.zeros_like(close)
     for i in range(3, len(close)):
         # Use last 3 candles to determine pattern
-        o1, h1, l1, c1 = open_price[i-3], high[i-3], low[i-3], close[i-3]
-        o2, h2, l2, c2 = open_price[i-2], high[i-2], low[i-2], close[i-2]
-        o3, h3, l3, c3 = open_price[i-1], high[i-1], low[i-1], close[i-1]
+        o1, _h1, _l1, c1 = open_price[i-3], high[i-3], low[i-3], close[i-3]
+        o2, _h2, _l2, c2 = open_price[i-2], high[i-2], low[i-2], close[i-2]
+        o3, _h3, _l3, c3 = open_price[i-1], high[i-1], low[i-1], close[i-1]
 
         # Body sizes
         body1 = abs(c1 - o1)

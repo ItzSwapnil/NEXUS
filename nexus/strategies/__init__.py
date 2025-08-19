@@ -9,6 +9,5 @@ This package contains the various trading strategies used by the NEXUS system:
 
 from .meta_strategy import MetaStrategy, SignalType
 
-# Allow importing the meta strategy
-__all__ = ['MetaStrategy']
-
+# Allow importing the meta strategy and signal type
+__all__ = ['MetaStrategy', 'SignalType']

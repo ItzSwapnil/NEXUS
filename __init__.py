@@ -4,7 +4,6 @@
 # for Python module discovery. This is particularly important for
 # local development where the package is installed in development mode.
 
-import os
 import sys
 from pathlib import Path
 

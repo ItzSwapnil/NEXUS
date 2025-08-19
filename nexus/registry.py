@@ -8,7 +8,7 @@ Supports hot-swapping, experimentation, and upgrades for extensibility.
 import importlib
 import pkgutil
 import logging
-from typing import Dict, Type, Any, Callable, List
+from typing import Dict, Type, List
 
 logger = logging.getLogger("nexus.registry")
 

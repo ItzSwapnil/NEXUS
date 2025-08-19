@@ -7,13 +7,11 @@ This module implements trading strategies for the NEXUS trading system.
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Dict, List, Optional, Set, Tuple, Any, Type
+from typing import Dict, List, Optional, Any, Type
 
-import numpy as np
 import pandas as pd
-import ta
 from ta.trend import SMAIndicator, EMAIndicator, MACD
-from ta.momentum import RSIIndicator, StochasticOscillator
+from ta.momentum import RSIIndicator
 from ta.volatility import BollingerBands
 
 from nexus.config import StrategyConfig

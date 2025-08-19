@@ -1,4 +1,3 @@
-import pytest
 from nexus.intelligence.fitness import CandidateMetrics, CandidateState, FitnessWeights, compute_composite_fitness
 from nexus.intelligence.promotion import PromotionManager
 from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings

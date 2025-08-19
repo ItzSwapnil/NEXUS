@@ -7,5 +7,6 @@ using PySide6 to create a modern, responsive UI with real-time trading capabilit
 
 __version__ = "1.0.0"
 
-from .main_window import NexusMainWindow
+from .main_window import NexusMainWindow as NexusMainWindow
 
+__all__ = ["NexusMainWindow"]

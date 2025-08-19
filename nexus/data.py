@@ -4,19 +4,17 @@ Data management module for NEXUS.
 This module handles data collection, processing, and storage for the NEXUS trading system.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any, Union
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-import ta
 from ta.trend import SMAIndicator, EMAIndicator, MACD
 from ta.momentum import RSIIndicator, StochasticOscillator
 from ta.volatility import BollingerBands, AverageTrueRange
-from ta.volume import OnBalanceVolumeIndicator, VolumeWeightedAveragePrice
+from ta.volume import OnBalanceVolumeIndicator
 
 from nexus.client import QuotexClient
 from nexus.config import DataConfig

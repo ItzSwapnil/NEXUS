@@ -4,20 +4,18 @@ Model management module for NEXUS.
 This module handles model training, evaluation, and prediction for the NEXUS trading system.
 """
 
-import asyncio
 import logging
-import os
 import pickle
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any, Union, Callable
+from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 import torch
 import torch.nn as nn
