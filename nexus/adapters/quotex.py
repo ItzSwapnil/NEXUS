@@ -356,7 +356,7 @@ class QuotexAdapter:
                 logger.error(f"Error getting assets: {str(e)}")
                 return []
 
-    def get_candles(self, asset: str, timeframe: int = 60, count: int = 100) -> pd.DataFrame:
+    def get_candles(self, asset: str, timeframe: int = 60, count: int = 100):
         """
         Get candles data for an asset.
 
@@ -366,8 +366,12 @@ class QuotexAdapter:
             count: Number of candles to retrieve
 
         Returns:
-            pd.DataFrame: Candles data with OHLCV columns
+            pd.DataFrame: Candles data with OHLCV columns if pandas available, else empty list
         """
+        if not _HAS_PANDAS:
+            logger.warning("pandas not available, returning empty list instead of DataFrame")
+            return []
+
         tf_seconds = timeframe * 60 if timeframe < 1000 else timeframe
         cache_key = f"{asset}_{tf_seconds}"
 
@@ -384,11 +388,11 @@ class QuotexAdapter:
                     raw_candles = self.client.get_candles(asset, tf_seconds, count, period=tf_seconds)
                 else:
                     logger.error("Quotex client does not support candle fetching.")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 if not raw_candles or not isinstance(raw_candles, list):
                     logger.error(f"Invalid or empty candle data for {asset} {timeframe}m")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 candles = pd.DataFrame(raw_candles)
 
@@ -398,7 +402,7 @@ class QuotexAdapter:
                 required_columns = ['open', 'high', 'low', 'close']
                 if not all(col in candles.columns for col in required_columns):
                     logger.error(f"Missing required columns in candle data for {asset} {timeframe}m")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 if 'volume' not in candles.columns:
                     candles['volume'] = 1.0
@@ -414,9 +418,9 @@ class QuotexAdapter:
 
             except Exception as e:
                 logger.error(f"Error fetching candles for {asset}: {e}")
-                return pd.DataFrame()
+                return pd.DataFrame() if _HAS_PANDAS else []
 
-    async def get_candles_async(self, asset: str, timeframe: int = 60, count: int = 100) -> pd.DataFrame:
+    async def get_candles_async(self, asset: str, timeframe: int = 60, count: int = 100):
         """
         Get candles data for an asset asynchronously.
 
@@ -426,8 +430,12 @@ class QuotexAdapter:
             count: Number of candles to retrieve
 
         Returns:
-            pd.DataFrame: Candles data with OHLCV columns
+            pd.DataFrame: Candles data with OHLCV columns if pandas available, else empty list
         """
+        if not _HAS_PANDAS:
+            logger.warning("pandas not available, returning empty list instead of DataFrame")
+            return []
+
         tf_seconds = timeframe * 60 if timeframe < 1000 else timeframe
         cache_key = f"{asset}_{tf_seconds}"
 
@@ -444,11 +452,11 @@ class QuotexAdapter:
                     raw_candles = await self.client.get_candles_async(asset, tf_seconds, count, period=tf_seconds)
                 else:
                     logger.error("Quotex client does not support async candle fetching.")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 if not raw_candles or not isinstance(raw_candles, list):
                     logger.error(f"Invalid or empty candle data for {asset} {timeframe}m")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 candles = pd.DataFrame(raw_candles)
 
@@ -458,7 +466,7 @@ class QuotexAdapter:
                 required_columns = ['open', 'high', 'low', 'close']
                 if not all(col in candles.columns for col in required_columns):
                     logger.error(f"Missing required columns in candle data for {asset} {timeframe}m")
-                    return pd.DataFrame()
+                    return pd.DataFrame() if _HAS_PANDAS else []
 
                 if 'volume' not in candles.columns:
                     candles['volume'] = 1.0
@@ -474,7 +482,7 @@ class QuotexAdapter:
 
             except Exception as e:
                 logger.error(f"Error fetching candles for {asset}: {e}")
-                return pd.DataFrame()
+                return pd.DataFrame() if _HAS_PANDAS else []
 
     def buy_simple(
         self,
