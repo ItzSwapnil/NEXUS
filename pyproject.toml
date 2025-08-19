@@ -3,7 +3,18 @@ name = "nexus"
 version = "2.0.0"
 description = "NEXUS: Fully Dynamic, Self-Evolving AI Trader for Quotex"
 requires-python = ">=3.13.6"
-dependencies = ["pydantic", "pydantic-settings", "omegaconf", "pandas", "duckdb", "PySide6", "pyyaml", "rich", "loguru", "pyqtgraph"]
+dependencies = [
+    "pydantic",
+    "pydantic-settings",
+    "omegaconf",
+    "pandas",
+    "duckdb",
+    "PySide6",
+    "pyyaml",
+    "rich",
+    "loguru",
+    "pyqtgraph",
+]
 
 [project.scripts]
 nexus = "nexus.main:main"
