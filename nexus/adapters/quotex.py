@@ -9,8 +9,15 @@ import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import time
-import pandas as pd
 import threading
+
+# Optional pandas import
+try:
+    import pandas as pd
+    _HAS_PANDAS = True
+except ImportError:  # pragma: no cover
+    pd = None  # type: ignore
+    _HAS_PANDAS = False
 
 # Optional pyquotex import
 try:
