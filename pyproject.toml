@@ -3,36 +3,23 @@ name = "nexus"
 version = "2.0.0"
 description = "NEXUS: Fully Dynamic, Self-Evolving AI Trader for Quotex"
 requires-python = ">=3.13.6"
-dependencies = [
-  # Config & validation libs
-  "pydantic",
-  "pydantic-settings",
-  "omegaconf",
-  "pandas",
-  "duckdb",
-  "PySide6",
-  "pyyaml"
-]
+dependencies = ["pydantic", "pydantic-settings", "omegaconf", "pandas", "duckdb", "PySide6", "pyyaml", "rich", "loguru", "pyqtgraph"]
 
 [project.scripts]
-# Launch GUI directly
 nexus = "nexus.main:main"
-# CLI (async wrapper)
 nexus-cli = "nexus.cli:run"
 
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "mypy", "Sphinx", "mkdocs", "mkdocstrings", "ruff", "black", "flake8", "playwright"]
+quotex = ["pyquotex @ git+https://github.com/cleitonleonel/pyquotex.git@master"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [tool.uv]
-# UV-specific settings if needed
+package = true
 
-[tool.uv.dependency-group.dev]
-dependencies = [
-  "pytest",
-  "pytest-asyncio",
-  "rich",
-  "loguru",
-  "mypy",
-  "Sphinx",
-  "playwright",
-  "pandas-stubs==2.3.0.250703",
-  "flake8"
-]
-
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "mypy", "Sphinx", "mkdocs", "mkdocstrings", "ruff", "black", "flake8", "playwright"]
+quotex = ["pyquotex @ git+https://github.com/cleitonleonel/pyquotex.git@master"]

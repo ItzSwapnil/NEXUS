@@ -10,12 +10,20 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import time
 import pandas as pd
-from pyquotex.stable_api import Quotex
-from nexus.utils.logger import get_nexus_logger, PerformanceLogger
 import threading
 
-# Ensure pyquotex is patched before any usage
-import nexus.adapters.pyquotex_patch
+# Optional pyquotex import
+try:
+    from pyquotex.stable_api import Quotex  # type: ignore
+    _HAS_PYQUOTEX = True
+except ImportError:  # pragma: no cover
+    Quotex = object  # type: ignore
+    _HAS_PYQUOTEX = False
+
+from nexus.utils.logger import get_nexus_logger, PerformanceLogger
+
+# Ensure pyquotex is patched before any usage (safe even if pyquotex missing)
+import nexus.adapters.pyquotex_patch  # noqa: F401
 
 # Set up logger
 logger = get_nexus_logger("nexus.adapters.quotex")
@@ -59,18 +67,12 @@ class QuotexAdapter:
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay
         self.session_file = session_file
-
-        # Initialize the Quotex API client
         self.client = None
         self.authenticated = False
         self.last_action = datetime.now()
-
-        # Cache for data efficiency
         self.candle_cache = {}
         self.asset_info_cache = {}
         self.last_cache_update = {}
-
-        # Event to manage login state
         self.login_ready = threading.Event()
 
         logger.info(f"Quotex adapter initialized for {'demo' if demo_mode else 'real'} account")
@@ -82,6 +84,10 @@ class QuotexAdapter:
         Returns:
             bool: Login success status
         """
+        if not _HAS_PYQUOTEX:
+            logger.error("pyquotex not installed. Install it to use QuotexAdapter.")
+            return False
+
         try:
             with perf_logger.measure("quotex_login"):
                 logger.info(f"Logging in to Quotex with email: {self.email}")
@@ -91,7 +97,7 @@ class QuotexAdapter:
                     email=self.email,
                     password=self.password,
                     lang="en"  # Always force English
-                )
+                )  # type: ignore[call-arg]
 
                 # pyquotex might need time to establish connection
                 await asyncio.sleep(1)
@@ -100,21 +106,19 @@ class QuotexAdapter:
                     # Check if we're authenticated by attempting to access account info
                     # Note: The method could vary based on pyquotex's actual API
                     if hasattr(self.client, 'connect') and callable(self.client.connect):
-                        await self.client.connect()
+                        await self.client.connect()  # type: ignore[attr-defined]
 
                     # Try different methods that might be available
-                    if hasattr(self.client, 'ssid') and self.client.ssid:
-                        logger.debug(f"Session established with SSID")
+                    if hasattr(self.client, 'ssid') and getattr(self.client, 'ssid', None):
                         self.authenticated = True
                     elif hasattr(self.client, 'get_profile'):
-                        profile = await self.client.get_profile()
+                        profile = await self.client.get_profile()  # type: ignore[attr-defined]
                         if profile:
-                            logger.debug(f"Profile retrieved successfully")
                             self.authenticated = True
                     else:
                         # Last resort: try get_balance - but handle potential errors
                         try:
-                            balance = await self.client.get_balance()
+                            balance = await self.client.get_balance()  # type: ignore[attr-defined]
                             if balance is not None:
                                 self.authenticated = True
                         except AttributeError:
@@ -129,19 +133,7 @@ class QuotexAdapter:
 
                         # Switch to demo if requested
                         if self.demo_mode:
-                            current_mode = "Demo" if self.demo_mode else "Real"
-                            if current_mode == "Demo":
-                                logger.info("Already in demo mode. Skipping account switch.")
-                            elif hasattr(self.client, 'change_account'):
-                                try:
-                                    demo_result = self.client.change_account("PRACTICE")
-                                    if demo_result:
-                                        logger.info(f"Switched to demo account. Current mode: {current_mode}")
-                                    else:
-                                        logger.warning(f"Failed to switch to demo account, but current mode is: {current_mode}")
-                                except Exception as e:
-                                    logger.warning(f"Error switching to demo account: {str(e)}. Current mode: {current_mode}")
-
+                            logger.info("Demo mode requested - ensure account is demo in UI")
                         return True
                     else:
                         self.login_ready.clear()  # Clear on failure
@@ -149,13 +141,13 @@ class QuotexAdapter:
                         return False
 
                 except Exception as e:
-                    logger.error(f"Connection error: {str(e)}")
+                    logger.error(f"Connection error: {e}")
                     self.authenticated = False
                     self.login_ready.clear()  # Clear on failure
                     return False
 
         except Exception as e:
-            logger.error(f"Login error: {str(e)}")
+            logger.error(f"Login error: {e}")
             self.authenticated = False
             self.login_ready.clear()  # Clear on failure
             return False

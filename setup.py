@@ -7,21 +7,30 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     install_requires=[
-        "pyquotex",
-        "playwright",
         "PySide6",
         "rich",
-        "pyqtgraph"
+        "pyqtgraph",
+        "pydantic",
+        "pydantic-settings",
+        "omegaconf",
+        "pandas",
+        "duckdb",
+        "pyyaml",
+        "loguru"
     ],
     extras_require={
         "dev": [
             "pytest",
+            "pytest-asyncio",
             "mkdocs",
             "mkdocstrings",
             "ruff",
             "black",
-            "flake8"
-        ]
+            "flake8",
+            "playwright"
+        ],
+        # Placeholder extra; user must manually install pyquotex from its source
+        "quotex": []
     },
     python_requires='>=3.13.6',
     entry_points={

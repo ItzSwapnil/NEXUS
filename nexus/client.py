@@ -11,7 +11,13 @@ from datetime import datetime
 from typing import Dict, Optional, Any
 
 import pandas as pd
-from pyquotex.stable_api import Quotex
+# Optional pyquotex import
+try:
+    from pyquotex.stable_api import Quotex  # type: ignore
+    _HAS_PYQUOTEX = True
+except ImportError:  # pragma: no cover - environment without pyquotex
+    Quotex = object  # type: ignore
+    _HAS_PYQUOTEX = False
 
 logger = logging.getLogger("nexus.client")
 
@@ -40,12 +46,11 @@ class QuotexClient:
         self.account_info: Dict[str, Any] = {}
 
     async def connect(self) -> bool:
-        """
-        Connect to the Quotex platform.
+        """Connect to the Quotex platform (requires pyquotex)."""
+        if not _HAS_PYQUOTEX:
+            logger.error("pyquotex is not installed. Install manually (e.g. via VCS) before using QuotexClient.")
+            return False
 
-        Returns:
-            bool: True if connection is successful, False otherwise
-        """
         try:
             # Create a new Quotex client instance
             self.client = Quotex(
@@ -55,7 +60,7 @@ class QuotexClient:
             )
 
             # Connect to Quotex
-            await self.client.connect()
+            await self.client.connect()  # type: ignore[attr-defined]
 
             # Set connected flag
             self.connected = True
@@ -65,7 +70,7 @@ class QuotexClient:
             await self.update_account_info()
 
             return True
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - network dependent
             logger.exception(f"Error connecting to Quotex: {e}")
             return False
 
@@ -85,7 +90,7 @@ class QuotexClient:
             self.connected = False
             logger.info("Successfully disconnected from Quotex")
             return True
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.exception(f"Error disconnecting from Quotex: {e}")
             return False
 
@@ -100,27 +105,27 @@ class QuotexClient:
             raise RuntimeError("Not connected to Quotex")
 
         try:
-            balance = await self.client.get_balance()
+            balance = await self.client.get_balance()  # type: ignore[attr-defined]
 
             # Try to get profile info for currency and user_id
             currency = None
             user_id = None
 
             # Try different ways to access profile data
-            if hasattr(self.client, 'profile') and self.client.profile:
-                profile = self.client.profile
+            if hasattr(self.client, 'profile') and getattr(self.client, 'profile'):
+                profile = getattr(self.client, 'profile')
                 # Access attributes directly rather than using .get()
                 if hasattr(profile, 'currency'):
-                    currency = profile.currency
+                    currency = profile.currency  # type: ignore[attr-defined]
                 if hasattr(profile, 'user_id'):
-                    user_id = profile.user_id
+                    user_id = profile.user_id  # type: ignore[attr-defined]
             elif hasattr(self.client, 'get_profile'):
-                profile = await self.client.get_profile()
+                profile = await self.client.get_profile()  # type: ignore[attr-defined]
                 # Access attributes directly rather than using .get()
                 if hasattr(profile, 'currency'):
-                    currency = profile.currency
+                    currency = profile.currency  # type: ignore[attr-defined]
                 if hasattr(profile, 'user_id'):
-                    user_id = profile.user_id
+                    user_id = profile.user_id  # type: ignore[attr-defined]
                 # If it's a dictionary type profile (uncommon but possible)
                 elif isinstance(profile, dict):
                     currency = profile.get('currency')
@@ -140,7 +145,7 @@ class QuotexClient:
             }
             logger.debug(f"Account info updated: Balance={balance} {currency}")
             return self.account_info
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.exception(f"Error updating account info: {e}")
             raise
 
@@ -171,25 +176,15 @@ class QuotexClient:
 
             # Try different possible method names for getting candles
             if hasattr(self.client, 'get_candles'):
-                candles = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.get_candles(asset, timeframe, count)
-                )
+                candles = await loop.run_in_executor(None, lambda: self.client.get_candles(asset, timeframe, count))  # type: ignore[attr-defined]
             elif hasattr(self.client, 'get_history'):
-                candles = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.get_history(asset, timeframe, count)
-                )
+                candles = await loop.run_in_executor(None, lambda: self.client.get_history(asset, timeframe, count))  # type: ignore[attr-defined]
             elif hasattr(self.client, 'get_historical_data'):
-                candles = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.get_historical_data(asset, timeframe, count)
-                )
+                candles = await loop.run_in_executor(None, lambda: self.client.get_historical_data(asset, timeframe, count))  # type: ignore[attr-defined]
             else:
                 # If we can't find an appropriate method, log the available methods and raise an error
-                methods = [method for method in dir(self.client) if not method.startswith('_') and callable(getattr(self.client, method))]
-                logger.error(f"No candle retrieval method found. Available methods: {methods}")
-                raise AttributeError(f"Could not find a method to get candles in the Quotex client. Available methods: {methods}")
+                methods = [m for m in dir(self.client) if not m.startswith('_')]
+                raise AttributeError(f"Could not find candle retrieval method. Available: {methods}")
 
             # Convert to DataFrame
             df = pd.DataFrame(candles)
@@ -210,7 +205,7 @@ class QuotexClient:
 
             logger.debug(f"Retrieved {len(df)} candles for {asset} at {timeframe}s timeframe")
             return df
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.exception(f"Error getting candles for {asset}: {e}")
             raise
 
@@ -254,7 +249,7 @@ class QuotexClient:
                         amount=amount,
                         action=direction.lower(),
                         expirations_times=expiration
-                    )
+                    )  # type: ignore[attr-defined]
                 )
 
                 # Process result
@@ -281,7 +276,7 @@ class QuotexClient:
                         amount=amount,
                         action=direction.lower(),
                         expirations_times=expiration
-                    )
+                    )  # type: ignore[attr-defined]
                 )
 
                 trade_info = {
@@ -296,7 +291,7 @@ class QuotexClient:
                 logger.info(f"Trade placed: {asset} {direction} {amount} - ID: {result}")
                 return trade_info
 
-        except Exception as e:
+        except Exception as e:  # pragma: no cover
             logger.exception(f"Error placing trade for {asset}: {e}")
             raise
 
