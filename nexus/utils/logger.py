@@ -10,8 +10,8 @@ This module provides sophisticated logging capabilities with:
 - Log rotation and compression
 - Real-time log streaming
 
-Rich is an optional dependency. If it's not installed, logging gracefully falls back
-to the standard library handlers without colored output.
+Rich and loguru are optional dependencies. If they're not installed, logging gracefully falls back
+to the standard library handlers without colored output or advanced features.
 """
 
 import logging
@@ -35,7 +35,13 @@ except ImportError:  # pragma: no cover
     RichHandler = None  # type: ignore
     _HAS_RICH = False
 
-from loguru import logger as loguru_logger
+# Optional loguru import
+try:  # pragma: no cover - environment dependent
+    from loguru import logger as loguru_logger
+    _HAS_LOGURU = True
+except ImportError:  # pragma: no cover
+    loguru_logger = None  # type: ignore
+    _HAS_LOGURU = False
 
 # Initialize Rich console if available
 console = Console() if _HAS_RICH else None
@@ -113,18 +119,19 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
         root_logger.addHandler(file_handler)
 
     # Set up loguru for performance logging
-    loguru_logger.configure(
-        handlers=[
-            {
-                "sink": config.log_dir / "nexus_performance.log",
-                "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
-                "rotation": "1 day",
-                "retention": "30 days",
-                "compression": "gz",
-                "encoding": "utf-8"
-            }
-        ]
-    )
+    if _HAS_LOGURU and loguru_logger:
+        loguru_logger.configure(
+            handlers=[
+                {
+                    "sink": config.log_dir / "nexus_performance.log",
+                    "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
+                    "rotation": "1 day",
+                    "retention": "30 days",
+                    "compression": "gz",
+                    "encoding": "utf-8"
+                }
+            ]
+        )
 
     return root_logger
 
@@ -159,13 +166,13 @@ class PerformanceLogger:
         """Start timing an operation."""
         self.operation = operation
         self.start_time = time.time()
-        loguru_logger.info(f"{self.component}.{operation} - Started")
 
     def end_operation(self, success: bool = True, details: Optional[Dict] = None):
         """End timing an operation."""
         if self.start_time:
             duration = time.time() - self.start_time
             status = "Success" if success else "Failed"
+
             msg = f"{self.component}.{self.operation} - {status} ({duration:.3f}s)"
             if details:
                 msg += f" - {details}"
@@ -174,7 +181,6 @@ class PerformanceLogger:
 
     @contextmanager
     def measure(self, operation: str):
-        """Performance measurement context manager."""
         self.start_operation(operation)
         try:
             yield
@@ -182,6 +188,7 @@ class PerformanceLogger:
         except Exception as e:
             self.end_operation(success=False, details={"error": str(e)})
             raise
+            self.start_time = None
 
 class TradeLogger:
     """
