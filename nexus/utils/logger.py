@@ -9,6 +9,9 @@ This module provides sophisticated logging capabilities with:
 - Error tracking and alerts
 - Log rotation and compression
 - Real-time log streaming
+
+Rich is an optional dependency. If it's not installed, logging gracefully falls back
+to the standard library handlers without colored output.
 """
 
 import logging
@@ -22,12 +25,20 @@ from dataclasses import dataclass
 import time
 from contextlib import contextmanager
 
-from rich.console import Console
-from rich.logging import RichHandler
+# Optional rich import
+try:  # pragma: no cover - environment dependent
+    from rich.console import Console  # type: ignore
+    from rich.logging import RichHandler  # type: ignore
+    _HAS_RICH = True
+except ImportError:  # pragma: no cover
+    Console = None  # type: ignore
+    RichHandler = None  # type: ignore
+    _HAS_RICH = False
+
 from loguru import logger as loguru_logger
 
-# Initialize Rich console
-console = Console()
+# Initialize Rich console if available
+console = Console() if _HAS_RICH else None
 
 @dataclass
 class LogConfig:
@@ -62,7 +73,7 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
 
     # Configure root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, config.level))
+    root_logger.setLevel(getattr(logging, config.level, logging.INFO))
 
     # Clear existing handlers
     root_logger.handlers.clear()
@@ -78,16 +89,19 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
         "%Y-%m-%d %H:%M:%S"
     )
 
-    # Console handler with Rich formatting
+    # Console handler (Rich if available, else standard StreamHandler)
     if config.console_output:
-        console_handler = RichHandler(
-            rich_tracebacks=True,
-            markup=True,
-            show_time=False,
-            show_path=False
-        )
+        if _HAS_RICH and RichHandler:
+            console_handler: logging.Handler = RichHandler(
+                rich_tracebacks=True,
+                markup=True,
+                show_time=False,
+                show_path=False
+            )  # type: ignore
+        else:
+            console_handler = logging.StreamHandler()
         console_handler.setFormatter(console_formatter)
-        console_handler.setLevel(getattr(logging, config.level))
+        console_handler.setLevel(getattr(logging, config.level, logging.INFO))
         root_logger.addHandler(console_handler)
 
     # File handler with UTF-8 encoding for emoji support
@@ -95,7 +109,7 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
         log_file = config.log_dir / f"nexus_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
         file_handler.setFormatter(file_formatter)
-        file_handler.setLevel(getattr(logging, config.level))
+        file_handler.setLevel(getattr(logging, config.level, logging.INFO))
         root_logger.addHandler(file_handler)
 
     # Set up loguru for performance logging
