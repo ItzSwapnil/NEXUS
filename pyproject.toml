@@ -14,6 +14,8 @@ dependencies = [
     "rich",
     "loguru",
     "pyqtgraph",
+    "pandas-stubs==2.3.0.250703",
+    "pyquotex",
 ]
 
 [project.scripts]
@@ -30,6 +32,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+pyquotex = { git = "https://github.com/cleitonleonel/pyquotex.git" }
 
 [dependency-groups]
 dev = ["pytest", "pytest-asyncio", "mypy", "Sphinx", "mkdocs", "mkdocstrings", "ruff", "black", "flake8", "playwright"]

@@ -20,6 +20,11 @@ from nexus.utils.config import NexusSettings
 from nexus.utils.logger import get_nexus_logger
 from nexus.payouts.fetch import get_payout_for_market, is_payout_allowed
 from nexus.intelligence.exploration import ExplorationController
+# Optional Quotex adapter import (safe even if pyquotex missing)
+try:
+    from nexus.adapters.quotex_adapter import QuotexAdapter as _QuotexAdapter  # type: ignore
+except Exception:  # pragma: no cover
+    _QuotexAdapter = None  # type: ignore
 
 logger = get_nexus_logger("nexus.core.engine")
 
@@ -70,10 +75,19 @@ class NexusEngine:
         # Exploration / exploitation controller
         self.exploration_controller = ExplorationController(settings)
 
+        # Broker adapter (lazy)
+        self._quotex = None  # type: ignore
+
     # ---------------------------- Initialization ---------------------------- #
     async def initialize_components(self) -> None:
         """Async init hook (placeholder)."""
         self._state.initialized = True
+        # Auto-login only if requested and non-demo
+        if self.auto_login and not self.demo_mode:
+            try:
+                await self.login_broker()
+            except Exception as e:  # pragma: no cover
+                logger.warning(f"Auto-login failed: {e}")
 
     # -------------------------- Registry Management ------------------------ #
     def register_strategy(self, name: str, strategy: Any) -> None:
@@ -90,6 +104,29 @@ class NexusEngine:
         if value > hi:
             return hi
         return value
+
+    # ------------------------ Broker/Quotex Integration ------------------- #
+    async def login_broker(self) -> bool:
+        """Login to Quotex (real account if demo_mode is False).
+
+        Returns True if login succeeded or adapter is available.
+        """
+        if self.demo_mode:
+            # In demo mode we don't require a live connection
+            return True
+        if _QuotexAdapter is None:
+            raise RuntimeError("Quotex adapter unavailable. Ensure pyquotex is installed.")
+        if self._quotex is None:
+            qcfg = self.settings.quotex
+            # Always respect engine.demo_mode for account selection
+            self._quotex = _QuotexAdapter(email=qcfg.email, password=qcfg.password, lang=qcfg.lang)
+        # Connect once (idempotent inside adapter)
+        try:
+            await self._quotex.connect()  # type: ignore[attr-defined]
+            return True
+        except Exception as e:
+            logger.error(f"Quotex login failed: {e}")
+            raise
 
     # -------------------------- Emotional State Logic ---------------------- #
     def update_emotional_state(self, trade_result: Dict[str, Any]) -> None:
@@ -166,9 +203,9 @@ class NexusEngine:
 
     # -------------------------- Trade Execution --------------------------- #
     async def execute_trade(self, asset: str, signal_type: str, amount: float, expiration: str) -> Dict[str, Any]:
-        """Execute (simulated) trade.
+        """Execute trade.
 
-        In non-demo mode, enforces payout threshold using payout guard logic.
+        In demo mode, simulate. In real mode, enforce payout threshold and place order via Quotex.
         Returns a result dict with success flag and optional error.
         """
         direction = signal_type.lower()
@@ -176,6 +213,11 @@ class NexusEngine:
             direction = "call"
 
         exp_key = str(expiration)
+        # Parse expiration/duration minutes (fallback to configured default)
+        try:
+            duration = int(exp_key)
+        except Exception:
+            duration = int(getattr(self.settings.trading, "default_expiration", 60))
 
         if not self.demo_mode:
             payout = get_payout_for_market(asset, exp_key)
@@ -184,7 +226,36 @@ class NexusEngine:
                 logger.warning(f"Blocked real trade for {asset} due to low payout ({payout} < {threshold})")
                 return {"success": False, "error": "Payout below threshold", "asset": asset, "direction": direction}
 
-        # Simulate a winning trade with deterministic profit
+            # Ensure logged in and place a real order
+            async with self._adapter_lock:
+                try:
+                    await self.login_broker()
+                except Exception as e:
+                    return {"success": False, "error": f"Login failed: {e}", "asset": asset, "direction": direction}
+
+                try:
+                    # Place order via adapter; treat truthy response as success
+                    resp = await self._quotex.buy_simple(asset, float(amount), direction, int(duration))  # type: ignore[attr-defined]
+                    placed = bool(resp) or resp is not None
+                    result: Dict[str, Any] = {
+                        "success": placed,
+                        "asset": asset,
+                        "direction": direction,
+                        "expiration": exp_key,
+                        "real_executed": True,
+                    }
+                    # Attach broker response if available
+                    if resp is not None:
+                        result["broker_response"] = resp
+                    # Real trade profit unknown at entry
+                    if placed:
+                        self.record_trade(True, 0.0)
+                    return result
+                except Exception as e:
+                    logger.error(f"Real trade placement failed: {e}")
+                    return {"success": False, "error": f"Placement failed: {e}", "asset": asset, "direction": direction}
+
+        # Demo/simulated branch: deterministic win
         profit = amount * 0.1
         self.record_trade(True, profit)
         return {
@@ -193,7 +264,25 @@ class NexusEngine:
             "asset": asset,
             "direction": direction,
             "expiration": exp_key,
-            "real_executed": not self.demo_mode,
+            "real_executed": False,
         }
+
+    # -------------------------- Account Balance Display -------------------------- #
+    async def get_account_balance(self) -> float:
+        """Return the current account balance (demo or real)."""
+        if self.demo_mode:
+            # Simulated balance for demo mode (from config or fixed)
+            demo_balance = getattr(self.settings.trading, "demo_balance", 10000.0)
+            return float(demo_balance)
+        if _QuotexAdapter is None:
+            raise RuntimeError("Quotex adapter unavailable. Ensure pyquotex is installed.")
+        async with self._adapter_lock:
+            try:
+                await self.login_broker()
+                balance = await self._quotex.get_balance()  # type: ignore[attr-defined]
+                return float(balance)
+            except Exception as e:
+                logger.error(f"Failed to fetch account balance: {e}")
+                raise RuntimeError(f"Could not fetch account balance: {e}")
 
 __all__ = ["NexusEngine"]

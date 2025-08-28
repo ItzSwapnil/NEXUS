@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 from typing import List
+import concurrent.futures
 
 from nexus.utils.config import NexusSettings
 from nexus.utils.logger import get_nexus_logger
@@ -18,7 +19,8 @@ logger = get_nexus_logger("nexus.gui.main_window")
 try:  # pragma: no cover - GUI only
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-        QTableWidget, QTableWidgetItem, QCheckBox, QSlider, QMessageBox, QGroupBox, QFormLayout, QListWidget
+        QTableWidget, QTableWidgetItem, QCheckBox, QSlider, QMessageBox, QGroupBox, QFormLayout, QListWidget,
+        QDialog, QLineEdit, QComboBox, QDialogButtonBox
     )
     from PySide6.QtCore import Qt, QTimer
 except Exception:  # pragma: no cover
@@ -27,6 +29,42 @@ except Exception:  # pragma: no cover
     logger.error("PySide6 not installed; GUI unavailable.")
 
 PAYOUT_COLORS = {"ok": "#2e7d32", "warn": "#f9a825", "bad": "#c62828"}
+
+
+class QuotexLoginDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Quotex Login")
+        self.setModal(True)
+        self.setWindowModality(Qt.ApplicationModal)
+        layout = QFormLayout(self)
+        self.email_input = QLineEdit(self)
+        self.email_input.setPlaceholderText("Email")
+        layout.addRow("Email:", self.email_input)
+        self.password_input = QLineEdit(self)
+        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_input.setPlaceholderText("Password")
+        layout.addRow("Password:", self.password_input)
+        self.lang_input = QComboBox(self)
+        self.lang_input.addItems(["en", "es", "fr", "de", "ru"])
+        layout.addRow("Language:", self.lang_input)
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addRow(self.buttons)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.parent():
+            geo = self.parent().geometry()
+            self.move(geo.center() - self.rect().center())
+
+    def get_credentials(self):
+        return {
+            "email": self.email_input.text(),
+            "password": self.password_input.text(),
+            "lang": self.lang_input.currentText(),
+        }
 
 
 class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
@@ -62,10 +100,13 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.panic_btn.clicked.connect(self._panic_stop)
 
         self.refresh_btn = QPushButton("Refresh Catalog")
-        self.refresh_btn.clicked.connect(lambda: asyncio.ensure_future(self._refresh_catalog()))
+        self.refresh_btn.clicked.connect(self._refresh_catalog_threaded)
 
         self.trade_btn = QPushButton("Execute Test Trade")
-        self.trade_btn.clicked.connect(lambda: asyncio.ensure_future(self._execute_test_trade()))
+        self.trade_btn.clicked.connect(self._execute_test_trade_threaded)
+
+        self.login_btn = QPushButton("Login to Quotex")
+        self.login_btn.clicked.connect(self._show_login_dialog)
 
         self.autonomy_slider = QSlider(Qt.Orientation.Horizontal)
         self.autonomy_slider.setMinimum(0)
@@ -75,7 +116,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.autonomy_label = QLabel(f"Autonomy: {self.engine.exploration_controller.cfg.base_epsilon:.2f}")
 
         for w in [self.demo_checkbox, self.filter_checkbox, self.override_btn, self.panic_btn, self.refresh_btn,
-                  self.trade_btn, self.autonomy_label, self.autonomy_slider]:
+                  self.trade_btn, self.login_btn, self.autonomy_label, self.autonomy_slider]:
             controls_layout.addWidget(w)
         controls_layout.addStretch(1)
         root_layout.addLayout(controls_layout)
@@ -110,7 +151,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         # Timers
         self.refresh_timer = QTimer(self)
         self.refresh_timer.setInterval(self.settings.trading.payout_poll_interval_seconds * 1000)
-        self.refresh_timer.timeout.connect(lambda: asyncio.ensure_future(self._refresh_catalog()))
+        self.refresh_timer.timeout.connect(self._refresh_catalog_threaded)
         self.refresh_timer.start()
 
         self.stats_timer = QTimer(self)
@@ -119,7 +160,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.stats_timer.start()
 
         # Kick off initial load
-        asyncio.ensure_future(self._refresh_catalog())
+        self._refresh_catalog_threaded()
         self._update_stats()
 
     # ------------------------ UI Event Handlers ------------------------ #
@@ -127,6 +168,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.engine.demo_mode = self.demo_checkbox.isChecked()
         mode = "DEMO" if self.engine.demo_mode else "REAL"
         self.status.showMessage(f"Mode switched to {mode}")
+        self._update_balance_threaded()
 
     def _toggle_payout_filter(self):
         self._payout_filter_enabled = self.filter_checkbox.isChecked()
@@ -153,24 +195,120 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self._update_stats()
 
     # ------------------------ Data / Async Ops ------------------------- #
-    async def _refresh_catalog(self):
-        try:
-            self._markets_cache = await get_market_catalog()
-            self._populate_markets_table()
-            self.status.showMessage(f"Catalog refreshed @ {datetime.utcnow().strftime('%H:%M:%S')} (markets={len(self._markets_cache)})")
-        except Exception as e:  # pragma: no cover
-            logger.error(f"Failed refreshing catalog: {e}")
+    def _refresh_catalog_threaded(self):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._refresh_catalog_sync)
+        future.add_done_callback(lambda f: self._on_catalog_refreshed(f))
 
-    async def _execute_test_trade(self):
-        asset = self.settings.trading.default_asset
-        result = await self.engine.execute_trade(asset, "call", self.settings.trading.base_trade_amount, str(self.settings.trading.default_expiration))
-        stamp = datetime.utcnow().strftime('%H:%M:%S')
-        if result.get("success"):
-            self.trade_log.addItem(f"[{stamp}] {asset} WIN +{result['profit']:.2f}")
+    def _refresh_catalog_sync(self):
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            from nexus.catalog.ingest import get_market_catalog
+            markets = loop.run_until_complete(get_market_catalog())
+            return (True, markets, None)
+        except Exception as e:
+            return (False, None, str(e))
+
+    def _on_catalog_refreshed(self, future):
+        success, markets, error = future.result()
+        if success:
+            self._markets_cache = markets
+            self._populate_markets_table()
+            from datetime import datetime, UTC
+            self.status.showMessage(f"Catalog refreshed @ {datetime.now(UTC).strftime('%H:%M:%S')} (markets={len(self._markets_cache)})")
         else:
+            logger.error(f"Failed refreshing catalog: {error}")
+
+    def _execute_test_trade_threaded(self):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._execute_test_trade_sync)
+        future.add_done_callback(lambda f: self._on_test_trade_done(f))
+
+    def _execute_test_trade_sync(self):
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            asset = self.settings.trading.default_asset
+            result = loop.run_until_complete(self.engine.execute_trade(asset, "call", self.settings.trading.base_trade_amount, str(self.settings.trading.default_expiration)))
+            return (True, result, None)
+        except Exception as e:
+            return (False, None, str(e))
+
+    def _on_test_trade_done(self, future):
+        success, result, error = future.result()
+        from datetime import datetime, UTC
+        stamp = datetime.now(UTC).strftime('%H:%M:%S')
+        asset = self.settings.trading.default_asset
+        if success and result and result.get("success"):
+            if "profit" in result:
+                self.trade_log.addItem(f"[{stamp}] {asset} WIN +{result['profit']:.2f}")
+            else:
+                self.trade_log.addItem(f"[{stamp}] {asset} ORDER PLACED")
+        elif success and result:
             self.trade_log.addItem(f"[{stamp}] {asset} BLOCKED: {result.get('error')}")
+        else:
+            self.trade_log.addItem(f"[{stamp}] {asset} ERROR: {error}")
         self.trade_log.scrollToBottom()
         self._update_stats()
+
+    def _show_login_dialog(self):
+        dialog = QuotexLoginDialog(self)
+        if dialog.exec() == QDialog.Accepted:
+            creds = dialog.get_credentials()
+            self.engine.settings.quotex.email = creds["email"]
+            self.engine.settings.quotex.password = creds["password"]
+            self.engine.settings.quotex.lang = creds["lang"]
+            # Run login in background thread
+            self.status.showMessage("Logging in to Quotex...")
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(self._do_login_sync)
+            future.add_done_callback(lambda f: self._on_login_done(f))
+
+    def _do_login_sync(self):
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self.engine.login_broker())
+            balance = loop.run_until_complete(self.engine.get_account_balance())
+            return (True, balance, None)
+        except Exception as e:
+            return (False, None, str(e))
+
+    def _on_login_done(self, future):
+        success, balance, error = future.result()
+        if success:
+            self.status.showMessage("Connected to Quotex!")
+            self.balance_label.setText(f"Balance: {balance:.2f}")
+        else:
+            self.status.showMessage(f"Login failed: {error}")
+            self.balance_label.setText("Balance: --")
+
+    def _update_balance_threaded(self):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._update_balance_sync)
+        future.add_done_callback(lambda f: self._on_balance_done(f))
+
+    def _update_balance_sync(self):
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            balance = loop.run_until_complete(self.engine.get_account_balance())
+            return (True, balance, None)
+        except Exception as e:
+            return (False, None, str(e))
+
+    def _on_balance_done(self, future):
+        success, balance, error = future.result()
+        if success:
+            self.balance_label.setText(f"Balance: {balance:.2f}")
+        else:
+            self.balance_label.setText("Balance: --")
+            logger.error(f"Balance fetch failed: {error}")
 
     # ------------------------ Rendering Helpers ------------------------- #
     def _populate_markets_table(self):

@@ -9,7 +9,7 @@ Lightweight prototype focusing on:
 - Minimal NexusEngine (registries, emotional state, simple risk sizing, simulated trades)
 - Exploration epsilon calculation (display only)
 - PySide6 GUI dashboard with basic controls & stats
-- 21 unit tests covering core logic
+- 22 unit tests covering core logic
 
 ## 2. Quick Start
 ```bash
@@ -17,7 +17,7 @@ uv venv .venv
 . .venv/Scripts/Activate.ps1   # Windows PowerShell
 test -f .venv/bin/activate && source .venv/bin/activate  # (optional POSIX)
 uv pip install -e .
-pytest -q              # Expect 21 passed
+pytest -q              # Expect 22 passed
 python main.py         # or: python -m nexus.main
 ```
 If console script is installed: `nexus`.
@@ -91,7 +91,7 @@ Display only (no routing yet).
 - Distributed or high-performance compute optimizations
 
 ## 11. Testing
-Run: `pytest -q` (21 passing). GUI not covered by tests yet.
+Run: `pytest -q` (22 passing). GUI not covered by tests yet.
 
 ## 12. Contributing
 Small, focused PRs; update docs only when a feature is implemented. See CONTRIBUTING.md.
@@ -108,4 +108,3 @@ Prototype / simulation. Not suitable for real trading decisions without further 
 
 ---
 This unified overview replaces fragmented earlier docs; keep it tight & factual.
-
