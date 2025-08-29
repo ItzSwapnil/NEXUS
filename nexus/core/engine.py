@@ -18,7 +18,7 @@ import asyncio
 
 from nexus.utils.config import NexusSettings
 from nexus.utils.logger import get_nexus_logger
-from nexus.payouts.fetch import get_payout_for_market, is_payout_allowed
+from nexus.payouts.fetch import get_payout_for_market, is_payout_allowed, is_override_enabled
 from nexus.intelligence.exploration import ExplorationController
 # Optional Quotex adapter import (safe even if pyquotex missing)
 try:
@@ -225,6 +225,20 @@ class NexusEngine:
             if not is_payout_allowed(payout, threshold):
                 logger.warning(f"Blocked real trade for {asset} due to low payout ({payout} < {threshold})")
                 return {"success": False, "error": "Payout below threshold", "asset": asset, "direction": direction}
+
+            # If payout override is enabled, avoid broker calls and simulate
+            if is_override_enabled():
+                profit = amount * 0.1
+                self.record_trade(True, profit)
+                return {
+                    "success": True,
+                    "profit": profit,
+                    "asset": asset,
+                    "direction": direction,
+                    "expiration": exp_key,
+                    "real_executed": False,
+                    "note": "simulated due to payout override",
+                }
 
             # Ensure logged in and place a real order
             async with self._adapter_lock:

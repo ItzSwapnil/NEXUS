@@ -3,15 +3,13 @@
 (Recovered implementation after prior file corruption.)
 """
 from __future__ import annotations
-import asyncio
-from datetime import datetime
 from typing import List
 import concurrent.futures
 
 from nexus.utils.config import NexusSettings
 from nexus.utils.logger import get_nexus_logger
 from nexus.payouts.fetch import set_payout_override, is_override_enabled
-from nexus.catalog.ingest import get_market_catalog, Market
+from nexus.catalog.ingest import Market
 from nexus.core.engine import NexusEngine
 
 logger = get_nexus_logger("nexus.gui.main_window")
