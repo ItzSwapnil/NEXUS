@@ -1,12 +1,4 @@
-"""Payout retrieval & guardrail logic (spec-aligned placeholder).
-
-Responsibilities:
-  * Provide payout lookup for a Market (supports expiration-specific payouts)
-  * Enforce payout threshold for real trading unless explicit override
-  * Log any override events with timestamp & user
-
-Real-time polling & integration with pyquotex / Playwright to be added later.
-"""
+"""Payout helpers and override."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,10 +15,9 @@ _override_enabled = False
 _override_log_path = Path("logs/payout_override.log")
 _override_log_path.parent.mkdir(exist_ok=True)
 
-# --------------------------- Core Payout Helpers -------------------------- #
 
 def get_payout_for_market(market_or_symbol: Union[Market, str], expiration: Optional[str] = None) -> float:
-    """Return payout % for the given market (supports symbol lookup)."""
+    """Return payout % for a Market or symbol."""
     market: Optional[Market] = None
     if isinstance(market_or_symbol, Market):
         market = market_or_symbol
@@ -37,16 +28,16 @@ def get_payout_for_market(market_or_symbol: Union[Market, str], expiration: Opti
         return 0.0
     return market.effective_payout(expiration)
 
+
 def is_payout_allowed(payout_percent: float, threshold: float) -> bool:
-    """Return True if payout passes threshold OR override enabled."""
+    """True if payout passes threshold or override is enabled."""
     if _override_enabled:
         return True
     return payout_percent >= threshold
 
-# --------------------------- Override Management -------------------------- #
 
 def set_payout_override(enabled: bool, user: Optional[str] = None, reason: str = "") -> None:
-    """Enable/disable payout guard override with audit logging."""
+    """Enable/disable payout override with audit logging."""
     global _override_enabled
     prev = _override_enabled
     _override_enabled = bool(enabled)
@@ -60,9 +51,10 @@ def set_payout_override(enabled: bool, user: Optional[str] = None, reason: str =
         try:
             with open(_override_log_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry) + "\n")
-        except Exception as e:  # pragma: no cover - best effort logging
+        except Exception as e:  # pragma: no cover
             logger.error(f"Failed writing override log: {e}")
         logger.info(f"Payout override set to {_override_enabled} (reason='{reason}')")
+
 
 def is_override_enabled() -> bool:
     return _override_enabled

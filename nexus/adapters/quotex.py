@@ -81,8 +81,17 @@ class QuotexAdapter:
         self.asset_info_cache = {}
         self.last_cache_update = {}
         self.login_ready = threading.Event()
+        # Optional pre-loaded session (user_agent, cookies, ssid)
+        self._session_override: Optional[Dict[str, Optional[str]]] = None
 
         logger.info(f"Quotex adapter initialized for {'demo' if demo_mode else 'real'} account")
+
+    def set_session(self, user_agent: str, cookies: Optional[str] = None, ssid: Optional[str] = None) -> None:
+        """Inject a browser-derived session to bypass email/password login/2FA.
+        Provide a user-agent string and optionally raw cookie header and ssid token.
+        Call this before login().
+        """
+        self._session_override = {"user_agent": user_agent, "cookies": cookies, "ssid": ssid}
 
     async def login(self) -> bool:
         """
@@ -106,6 +115,15 @@ class QuotexAdapter:
                     lang="en"  # Always force English
                 )  # type: ignore[call-arg]
 
+                # If a browser session has been provided, set it before connecting
+                try:
+                    if self._session_override is not None and hasattr(self.client, 'set_session'):
+                        ua = self._session_override.get("user_agent") or "Quotex/1.0"
+                        self.client.set_session(ua, self._session_override.get("cookies"), self._session_override.get("ssid"))  # type: ignore[attr-defined]
+                        logger.info("Applied browser session to Quotex client")
+                except Exception as e:
+                    logger.warning(f"Failed to apply session override: {e}")
+
                 # pyquotex might need time to establish connection
                 await asyncio.sleep(1)
 
@@ -114,6 +132,15 @@ class QuotexAdapter:
                     # Note: The method could vary based on pyquotex's actual API
                     if hasattr(self.client, 'connect') and callable(self.client.connect):
                         await self.client.connect()  # type: ignore[attr-defined]
+
+                    # After connect, verify websocket acceptance if API provides it
+                    try:
+                        if hasattr(self.client, 'check_connect'):
+                            ok = await self.client.check_connect()  # type: ignore[attr-defined]
+                            if not ok:
+                                raise RuntimeError("Websocket not accepted by server")
+                    except Exception as e:
+                        logger.warning(f"Connectivity check failed: {e}")
 
                     # Try different methods that might be available
                     if hasattr(self.client, 'ssid') and getattr(self.client, 'ssid', None):

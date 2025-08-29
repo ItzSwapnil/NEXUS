@@ -1,33 +1,27 @@
-"""
-This module is deprecated. Please use nexus.utils.logger instead.
+"""Deprecated; use nexus.utils.logger instead (re-exports kept for compat)."""
 
-For backward compatibility, this module re-exports the functionality from logger.py.
-"""
-
-# Re-export specific items from logger instead of using star import
 from nexus.utils.logger import (
     LogConfig,
     setup_nexus_logging,
     get_nexus_logger,
     PerformanceLogger,
     TradeLogger,
-    MetricsLogger
+    MetricsCollector,
 )
 
 import warnings
 
 warnings.warn(
-    "The nexus.utils.logging module is deprecated. Please use nexus.utils.logger instead.",
+    "nexus.utils.logging is deprecated; use nexus.utils.logger instead.",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
-# Make the imported items available
 __all__ = [
     'LogConfig',
     'setup_nexus_logging',
     'get_nexus_logger',
     'PerformanceLogger',
     'TradeLogger',
-    'MetricsLogger'
+    'MetricsCollector',
 ]

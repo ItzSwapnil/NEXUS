@@ -1,12 +1,4 @@
-"""
-Configuration utilities for NEXUS.
-
-This module provides enhanced configuration management with:
-- Pydantic-based settings validation
-- Environment variable integration
-- Dynamic configuration reloading
-- Configuration encryption for sensitive data
-"""
+"""Configuration utilities for NEXUS."""
 
 import yaml
 from pathlib import Path
@@ -29,7 +21,7 @@ class QuotexSettings(BaseModel):
     connection_timeout: int = 30
 
 class TradingSettings(BaseModel):
-    """Trading configuration settings."""
+    """Trading settings."""
     prediction_interval: int = 10
     min_confidence: float = 0.7
     max_open_trades: int = 3
@@ -39,18 +31,15 @@ class TradingSettings(BaseModel):
     base_trade_amount: float = 5.0
     max_risk_per_trade_percent: float = 2.0
     max_loss_percent: float = 5.0
-    # Spec additions
     payout_threshold: float = 80.0
     payout_poll_interval_seconds: int = 30
     max_exploration_capital_pct: float = 2.0
-    # Realism toggle (default off to keep tests deterministic)
     use_live_catalog: bool = False
-    # Autonomous trading (GUI loop)
     auto_trade_enabled: bool = False
     auto_trade_interval_seconds: int = 30
 
 class ExplorationSettings(BaseModel):
-    """Exploration / exploitation controller settings (Spec §3)."""
+    """Exploration/exploitation settings."""
     base_epsilon: float = 0.15
     k_uncertainty: float = 0.35
     min_epsilon: float = 0.01
@@ -59,7 +48,7 @@ class ExplorationSettings(BaseModel):
     fitness_promotion_threshold: float = 0.65
 
 class FitnessSettings(BaseModel):
-    """Weights for composite fitness function (Spec §4)."""
+    """Composite fitness weights."""
     alpha_sharpe: float = 0.25
     alpha_sortino: float = 0.2
     alpha_profit_factor: float = 0.15
@@ -71,45 +60,45 @@ class FitnessSettings(BaseModel):
     gamma_constraint: float = 0.02
 
 class AISettings(BaseModel):
-    """AI model configuration settings."""
+    """AI model settings."""
     enable_gpu: bool = True
     num_workers: int = 4
-    model_update_interval: int = 3600  # 1 hour
+    model_update_interval: int = 3600
     learning_rate: float = 0.001
     batch_size: int = 256
     sequence_length: int = 100
 
 class MemorySettings(BaseModel):
-    """Vector memory configuration settings."""
+    """Vector memory settings."""
     capacity: int = 10000
     dimension: int = 128
     storage_path: str = "data/vector_memory"
 
 class RegimeDetectorSettings(BaseModel):
-    """Regime detector configuration settings."""
+    """Regime detector settings."""
     n_regimes: int = 4
     lookback_periods: int = 200
     sensitivity: float = 0.5
 
 class TransformerSettings(BaseModel):
-    """Transformer model configuration settings."""
+    """Transformer settings."""
     lookback_periods: int = 200
     feature_dim: int = 32
     batch_size: int = 128
 
 class RLAgentSettings(BaseModel):
-    """RL agent configuration settings."""
+    """RL agent settings."""
     state_dim: int = 32
     hidden_dim: int = 64
     buffer_capacity: int = 10000
 
 class EvolutionSettings(BaseModel):
-    """Evolution engine configuration settings."""
+    """Evolution engine settings."""
     population_size: int = 20
     mutation_rate: float = 0.1
 
 class NexusSettings(BaseSettings):
-    """Main NEXUS configuration settings."""
+    """Top-level NEXUS settings."""
     quotex: QuotexSettings
     trading: TradingSettings
     ai: AISettings = AISettings()
@@ -130,7 +119,6 @@ class NexusSettings(BaseSettings):
     version: str = "2.0.0"
     debug_mode: bool = False
 
-    # Pydantic v2 settings config
     model_config = SettingsConfigDict(
         env_file=".env",
         env_nested_delimiter="__",
@@ -139,15 +127,7 @@ class NexusSettings(BaseSettings):
 
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:
-    """
-    Load NEXUS configuration from YAML file.
-
-    Args:
-        config_path: Path to configuration file
-
-    Returns:
-        NexusSettings: Loaded configuration
-    """
+    """Load configuration from YAML; create defaults if missing."""
     if config_path is None:
         config_path = Path("config.yaml")
 
@@ -161,12 +141,8 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
         with open(config_path, 'r', encoding='utf-8') as f:
             config_data = yaml.safe_load(f)
 
-        # Convert to OmegaConf for advanced features
         _ = OmegaConf.create(config_data)
-
-        # Create Pydantic settings from loaded data
         settings = NexusSettings(**config_data)
-
         logger.info(f"Configuration loaded from {config_path}")
         return settings
 
@@ -177,15 +153,7 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
 
 
 def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
-    """
-    Create default NEXUS configuration.
-
-    Args:
-        save_path: Optional path to save the config file
-
-    Returns:
-        NexusSettings: Default configuration
-    """
+    """Create default config and optionally save to disk."""
     default_config = NexusSettings(
         quotex=QuotexSettings(
             email="demo@example.com",
@@ -207,37 +175,22 @@ def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
 
 
 def validate_config(config: NexusSettings) -> bool:
-    """
-    Validate configuration settings.
-
-    Args:
-        config: Configuration to validate
-
-    Returns:
-        bool: True if valid, False otherwise
-    """
+    """Basic validation for settings integrity."""
     try:
-        # Validate quotex settings
         if not config.quotex.email or not config.quotex.password:
             logger.error("Quotex email and password are required")
             return False
-
-        # Validate trading settings
         if config.trading.max_risk_per_trade_percent <= 0 or config.trading.max_risk_per_trade_percent > 100:
             logger.error("Risk per trade percentage must be between 0 and 100")
             return False
         if config.trading.payout_threshold <= 0 or config.trading.payout_threshold > 100:
             logger.error("Payout threshold must be between 0 and 100")
             return False
-
-        # Validate AI settings
         if config.ai.num_workers <= 0:
             logger.error("Number of workers must be positive")
             return False
-
         logger.info("Configuration validation passed")
         return True
-
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         return False

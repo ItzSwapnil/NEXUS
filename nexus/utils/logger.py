@@ -1,18 +1,4 @@
-"""
-Advanced Logging System for NEXUS
-
-This module provides sophisticated logging capabilities with:
-- Structured logging with JSON output
-- Multi-level logging (console, file, remote)
-- Performance metrics and timing
-- Trade logging and audit trails
-- Error tracking and alerts
-- Log rotation and compression
-- Real-time log streaming
-
-Rich and loguru are optional dependencies. If they're not installed, logging gracefully falls back
-to the standard library handlers without colored output or advanced features.
-"""
+"""NEXUS logging utilities."""
 
 import logging
 import logging.handlers
@@ -43,74 +29,43 @@ except ImportError:  # pragma: no cover
     loguru_logger = None  # type: ignore
     _HAS_LOGURU = False
 
-# Initialize Rich console if available
 console = Console() if _HAS_RICH else None
 
 @dataclass
 class LogConfig:
-    """Logging configuration."""
+    """Logging config."""
     level: str = "INFO"
     console_output: bool = True
     file_output: bool = True
     structured_output: bool = True
     log_dir: Path = Path("logs")
-    max_file_size: int = 100 * 1024 * 1024  # 100MB
+    max_file_size: int = 100 * 1024 * 1024
     backup_count: int = 10
     enable_performance_logging: bool = True
     enable_trade_logging: bool = True
     enable_error_tracking: bool = True
 
 def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
-    """
-    Set up NEXUS logging system.
-
-    Args:
-        config: Logging configuration
-
-    Returns:
-        Root logger
-    """
-    # Use default config if none provided
+    """Set up logging and return the root logger."""
     if config is None:
         config = LogConfig()
-
-    # Create log directory if it doesn't exist
     os.makedirs(config.log_dir, exist_ok=True)
-
-    # Configure root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, config.level, logging.INFO))
-
-    # Clear existing handlers
     root_logger.handlers.clear()
 
-    # Set up formatters
-    console_formatter = logging.Formatter(
-        "[%(asctime)s] %(levelname)-8s %(message)s",
-        "%H:%M:%S"
-    )
+    console_formatter = logging.Formatter("[%(asctime)s] %(levelname)-8s %(message)s", "%H:%M:%S")
+    file_formatter = logging.Formatter("%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s", "%Y-%m-%d %H:%M:%S")
 
-    file_formatter = logging.Formatter(
-        "%(asctime)s | %(levelname)-8s | %(name)-25s | %(message)s",
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    # Console handler (Rich if available, else standard StreamHandler)
     if config.console_output:
         if _HAS_RICH and RichHandler:
-            console_handler: logging.Handler = RichHandler(
-                rich_tracebacks=True,
-                markup=True,
-                show_time=False,
-                show_path=False
-            )  # type: ignore
+            console_handler: logging.Handler = RichHandler(rich_tracebacks=True, markup=True, show_time=False, show_path=False)  # type: ignore
         else:
             console_handler = logging.StreamHandler()
         console_handler.setFormatter(console_formatter)
         console_handler.setLevel(getattr(logging, config.level, logging.INFO))
         root_logger.addHandler(console_handler)
 
-    # File handler with UTF-8 encoding for emoji support
     if config.file_output:
         log_file = config.log_dir / f"nexus_{datetime.now().strftime('%Y%m%d')}.log"
         file_handler = logging.FileHandler(log_file, encoding='utf-8')
@@ -118,7 +73,6 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
         file_handler.setLevel(getattr(logging, config.level, logging.INFO))
         root_logger.addHandler(file_handler)
 
-    # Set up loguru for performance logging
     if _HAS_LOGURU and loguru_logger:
         loguru_logger.configure(
             handlers=[
@@ -136,29 +90,14 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
     return root_logger
 
 def get_nexus_logger(name: str) -> logging.Logger:
-    """
-    Get a NEXUS logger instance.
-
-    Args:
-        name: Logger name
-
-    Returns:
-        Logger instance
-    """
+    """Return a logger by name."""
     return logging.getLogger(name)
 
 class PerformanceLogger:
-    """
-    Performance logging and metrics tracking.
-    """
+    """Performance logging and timing."""
 
     def __init__(self, component: str):
-        """
-        Initialize performance logger.
-
-        Args:
-            component: Component name for logging
-        """
+        """Create a performance logger for a component."""
         self.component = component
         self.start_time = None
 
@@ -168,11 +107,10 @@ class PerformanceLogger:
         self.start_time = time.time()
 
     def end_operation(self, success: bool = True, details: Optional[Dict] = None):
-        """End timing an operation."""
+        """End timing an operation and log it."""
         if self.start_time:
             duration = time.time() - self.start_time
             status = "Success" if success else "Failed"
-
             msg = f"{self.component}.{self.operation} - {status} ({duration:.3f}s)"
             if details:
                 msg += f" - {details}"
@@ -181,6 +119,7 @@ class PerformanceLogger:
 
     @contextmanager
     def measure(self, operation: str):
+        """Context manager to time an operation."""
         self.start_operation(operation)
         try:
             yield
@@ -191,21 +130,14 @@ class PerformanceLogger:
             self.start_time = None
 
 class TradeLogger:
-    """
-    Specialized logger for trade operations.
-    """
+    """Logger for trades and signals."""
 
     def __init__(self):
         self.trades_file = Path("logs") / f"trades_{datetime.now().strftime('%Y%m%d')}.log"
         os.makedirs("logs", exist_ok=True)
 
     def log_trade(self, trade_data: Dict[str, Any]):
-        """
-        Log trade execution details.
-
-        Args:
-            trade_data: Trade information
-        """
+        """Append a trade record to the log file."""
         timestamp = datetime.now().isoformat()
         trade_record = {
             "timestamp": timestamp,
@@ -219,17 +151,11 @@ class TradeLogger:
             "result": trade_data.get("result"),
             "profit_loss": trade_data.get("profit_loss")
         }
-
         with open(self.trades_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(trade_record) + '\n')
 
     def log_signal(self, signal_data: Dict[str, Any]):
-        """
-        Log trading signal generation.
-
-        Args:
-            signal_data: Signal information
-        """
+        """Append a signal record to the log file."""
         timestamp = datetime.now().isoformat()
         signal_record = {
             "timestamp": timestamp,
@@ -240,14 +166,11 @@ class TradeLogger:
             "features": signal_data.get("features"),
             "model_outputs": signal_data.get("model_outputs")
         }
-
         with open(self.trades_file, 'a', encoding='utf-8') as f:
             f.write(json.dumps(signal_record) + '\n')
 
 class MetricsCollector:
-    """
-    System metrics collection and monitoring.
-    """
+    """In-memory metrics collector."""
 
     def __init__(self):
         self.metrics = {}
@@ -263,13 +186,13 @@ class MetricsCollector:
         }
 
     def get_uptime(self) -> float:
-        """Get system uptime in seconds."""
+        """Return process uptime in seconds."""
         return time.time() - self.start_time
 
     def get_metrics_summary(self) -> Dict:
-        """Get summary of all metrics."""
+        """Return a summary of tracked metrics."""
         return {
             "uptime": self.get_uptime(),
             "metrics_count": len(self.metrics),
-            "latest_metrics": dict(list(self.metrics.items())[-10:])  # Last 10 metrics
+            "latest_metrics": dict(list(self.metrics.items())[-10:])
         }

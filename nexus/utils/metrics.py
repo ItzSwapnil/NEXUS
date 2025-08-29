@@ -1,9 +1,4 @@
-"""
-Financial Performance Metrics - Replacement for empyrical
-
-This module provides financial performance calculations that are compatible
-with Python 3.13, replacing the deprecated empyrical package functionality.
-"""
+"""Financial performance metrics compatible with Python 3.13."""
 
 import numpy as np
 import pandas as pd

@@ -1,13 +1,4 @@
-"""
-Advanced Transformer Model for Market Prediction in NEXUS
-
-This module implements a state-of-the-art transformer architecture specifically
-designed for financial time series prediction with:
-- Multi-head attention for pattern recognition
-- Positional encoding for temporal awareness
-- Adaptive learning rates and regularization
-- Real-time inference optimization
-"""
+"""Transformer-based market prediction components."""
 
 # Attempt to import torch; provide graceful fallback if unavailable
 try:

@@ -1,10 +1,4 @@
-"""Market catalog ingestion (spec-aligned with optional live fetch).
-
-Responsibilities (Spec §2):
-  * Provide an in-memory catalog of markets with payout percentages
-  * Support OTC flagging and per-expiration payout mapping
-  * Optional live ingestion via Quotex adapter (fallback to placeholder)
-"""
+"""Market catalog ingestion."""
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
@@ -52,7 +46,7 @@ async def get_market_catalog(force_refresh: bool = False) -> List[Market]:
 async def refresh_catalog() -> None:
     return None
 
-async def fetch_live_catalog(adapter: Any) -> List[Market]:  # pragma: no cover (network dependent)
+async def fetch_live_catalog(adapter: Any) -> List[Market]:  # pragma: no cover
     try:
         raw = await adapter.get_assets()
         markets: List[Market] = []
