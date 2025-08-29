@@ -1,8 +1,10 @@
 ---
-name: "🚀 Feature Request"
+name: "\U0001F680 Feature Request"
 about: Propose a stylish, detailed feature or enhancement for NEXUS
+title: ''
 labels: enhancement
 assignees: ''
+
 ---
 
 # 🚀 Feature Request

@@ -1,8 +1,10 @@
 ---
-name: "🐞 Bug Report"
+name: "\U0001F41E Bug Report"
 about: File a detailed, stylish bug report to help us improve NEXUS
+title: ''
 labels: bug
 assignees: ''
+
 ---
 
 # 🐞 Bug Report
