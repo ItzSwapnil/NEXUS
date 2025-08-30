@@ -135,7 +135,7 @@ class NexusSettings(BaseSettings):
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:
     """Load configuration from YAML; create defaults if missing.
-    Environment variables from .env or process override key fields for convenience.
+    Environment variables from .env or process may override only email/password.
     """
     if config_path is None:
         config_path = Path("config.yaml")
@@ -153,39 +153,13 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
         _ = OmegaConf.create(config_data)
         settings = NexusSettings(**config_data)
 
-        # Environment overrides for prominent fields
-        def _env_bool(key: str, default: Optional[bool] = None) -> Optional[bool]:
-            val = os.getenv(key)
-            if val is None:
-                return default
-            return val.strip().lower() in {"1", "true", "yes", "on"}
-
-        overrides = {
-            "AUTO_LOGIN": _env_bool("AUTO_LOGIN"),
-            "QUOTEX__EMAIL": os.getenv("QUOTEX__EMAIL"),
-            "QUOTEX__PASSWORD": os.getenv("QUOTEX__PASSWORD"),
-            "QUOTEX__DEMO_MODE": _env_bool("QUOTEX__DEMO_MODE"),
-            "QUOTEX__LANG": os.getenv("QUOTEX__LANG"),
-            "QUOTEX__USER_AGENT": os.getenv("QUOTEX__USER_AGENT"),
-            "QUOTEX__COOKIES": os.getenv("QUOTEX__COOKIES"),
-            "QUOTEX__SSID": os.getenv("QUOTEX__SSID"),
-        }
-        if overrides["AUTO_LOGIN"] is not None:
-            settings.auto_login = bool(overrides["AUTO_LOGIN"])  # type: ignore[assignment]
-        if overrides["QUOTEX__EMAIL"]:
-            settings.quotex.email = str(overrides["QUOTEX__EMAIL"])  # type: ignore[assignment]
-        if overrides["QUOTEX__PASSWORD"]:
-            settings.quotex.password = str(overrides["QUOTEX__PASSWORD"])  # type: ignore[assignment]
-        if overrides["QUOTEX__DEMO_MODE"] is not None:
-            settings.quotex.demo_mode = bool(overrides["QUOTEX__DEMO_MODE"])  # type: ignore[assignment]
-        if overrides["QUOTEX__LANG"]:
-            settings.quotex.lang = str(overrides["QUOTEX__LANG"])  # type: ignore[assignment]
-        if overrides["QUOTEX__USER_AGENT"]:
-            settings.quotex.user_agent = str(overrides["QUOTEX__USER_AGENT"])  # type: ignore[assignment]
-        if overrides["QUOTEX__COOKIES"]:
-            settings.quotex.cookies = str(overrides["QUOTEX__COOKIES"])  # type: ignore[assignment]
-        if overrides["QUOTEX__SSID"]:
-            settings.quotex.ssid = str(overrides["QUOTEX__SSID"])  # type: ignore[assignment]
+        # Only allow overriding email/password from environment
+        env_email = os.getenv("QUOTEX__EMAIL")
+        env_password = os.getenv("QUOTEX__PASSWORD")
+        if env_email:
+            settings.quotex.email = str(env_email)  # type: ignore[assignment]
+        if env_password:
+            settings.quotex.password = str(env_password)  # type: ignore[assignment]
 
         logger.info(f"Configuration loaded from {config_path}")
         return settings
