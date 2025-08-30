@@ -7,9 +7,10 @@ with advanced error handling, connection management, and data processing capabil
 
 import asyncio
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 import time
 import threading
+import inspect
 
 # Optional pandas import
 try:
@@ -93,6 +94,12 @@ class QuotexAdapter:
         """
         self._session_override = {"user_agent": user_agent, "cookies": cookies, "ssid": ssid}
 
+    async def _maybe_await(self, value: Any) -> Any:
+        """Await value if it's awaitable, else return as-is."""
+        if inspect.isawaitable(value):
+            return await value
+        return value
+
     async def login(self) -> bool:
         """
         Log in to Quotex platform (pyquotex requires initialization and connection).
@@ -124,20 +131,19 @@ class QuotexAdapter:
                 except Exception as e:
                     logger.warning(f"Failed to apply session override: {e}")
 
-                # pyquotex might need time to establish connection
-                await asyncio.sleep(1)
+                # Small pause for any underlying init
+                await asyncio.sleep(0)
 
                 try:
-                    # Check if we're authenticated by attempting to access account info
-                    # Note: The method could vary based on pyquotex's actual API
+                    # Connect if available
                     if hasattr(self.client, 'connect') and callable(self.client.connect):
-                        await self.client.connect()  # type: ignore[attr-defined]
+                        await self._maybe_await(self.client.connect())  # type: ignore[attr-defined]
 
                     # After connect, verify websocket acceptance if API provides it
                     try:
                         if hasattr(self.client, 'check_connect'):
-                            ok = await self.client.check_connect()  # type: ignore[attr-defined]
-                            if not ok:
+                            ok = await self._maybe_await(self.client.check_connect())  # type: ignore[attr-defined]
+                            if isinstance(ok, bool) and not ok:
                                 raise RuntimeError("Websocket not accepted by server")
                     except Exception as e:
                         logger.warning(f"Connectivity check failed: {e}")
@@ -146,44 +152,39 @@ class QuotexAdapter:
                     if hasattr(self.client, 'ssid') and getattr(self.client, 'ssid', None):
                         self.authenticated = True
                     elif hasattr(self.client, 'get_profile'):
-                        profile = await self.client.get_profile()  # type: ignore[attr-defined]
+                        profile = await self._maybe_await(self.client.get_profile())  # type: ignore[attr-defined]
                         if profile:
                             self.authenticated = True
                     else:
-                        # Last resort: try get_balance - but handle potential errors
                         try:
-                            balance = await self.client.get_balance()  # type: ignore[attr-defined]
+                            balance = await self._maybe_await(self.client.get_balance())  # type: ignore[attr-defined]
                             if balance is not None:
                                 self.authenticated = True
                         except AttributeError:
-                            # This might be the error we're encountering
                             logger.warning("Balance not immediately available, trying alternative auth check")
-                            # We'll try to proceed anyway, as some methods might work even if get_balance doesn't
-                            self.authenticated = True  # Assume success and let later operations validate
+                            self.authenticated = True
 
                     if self.authenticated:
                         logger.info("Successfully connected to Quotex")
-                        self.login_ready.set()  # Signal that login is complete
-
-                        # Switch to demo if requested
+                        self.login_ready.set()
                         if self.demo_mode:
                             logger.info("Demo mode requested - ensure account is demo in UI")
                         return True
                     else:
-                        self.login_ready.clear()  # Clear on failure
+                        self.login_ready.clear()
                         logger.error("Failed to establish authenticated session")
                         return False
 
                 except Exception as e:
                     logger.error(f"Connection error: {e}")
                     self.authenticated = False
-                    self.login_ready.clear()  # Clear on failure
+                    self.login_ready.clear()
                     return False
 
         except Exception as e:
             logger.error(f"Login error: {e}")
             self.authenticated = False
-            self.login_ready.clear()  # Clear on failure
+            self.login_ready.clear()
             return False
 
     def logout(self) -> bool:
@@ -196,15 +197,12 @@ class QuotexAdapter:
         if not self.authenticated or not self.client:
             logger.warning("Not logged in, nothing to log out from")
             return True
-
         try:
             with perf_logger.measure("quotex_logout"):
-                # No explicit logout in pyquotex, so we'll just clear session
                 self.client = None
                 self.authenticated = False
                 logger.info("Logged out from Quotex")
                 return True
-
         except Exception as e:
             logger.error(f"Logout error: {str(e)}")
             return False
@@ -219,12 +217,9 @@ class QuotexAdapter:
         if not self.authenticated or not self.client:
             logger.warning("Not authenticated, attempting to login")
             return await self.login()
-
-        # Check if session might be expired (1 hour)
         if (datetime.now() - self.last_action) > timedelta(hours=1):
             logger.info("Session might be expired, refreshing login")
             return await self.login()
-
         return True
 
     def _with_retry(self, func, *args, **kwargs):
@@ -241,85 +236,66 @@ class QuotexAdapter:
         """
         attempts = 0
         last_error = None
-
         while attempts < self.retry_attempts:
             try:
-                if not self._ensure_authenticated():
-                    logger.error("Authentication failed, cannot execute function")
-                    return None
-
+                # Ensure authentication if method requires client
+                if hasattr(self, 'client') and callable(getattr(self, 'client', None)):
+                    pass
+                if not self.authenticated or not self.client:
+                    # Best-effort sync re-auth via loop
+                    try:
+                        asyncio.run(self.login())
+                    except RuntimeError:
+                        # Already in a loop or not possible; skip
+                        pass
                 result = func(*args, **kwargs)
                 self.last_action = datetime.now()
                 return result
-
             except Exception as e:
                 attempts += 1
                 last_error = e
                 logger.warning(f"Error executing function ({attempts}/{self.retry_attempts}): {str(e)}")
-
                 if attempts < self.retry_attempts:
                     sleep_time = self.retry_delay * attempts
                     logger.info(f"Retrying in {sleep_time} seconds...")
                     time.sleep(sleep_time)
-
         logger.error(f"All retry attempts failed: {str(last_error)}")
         return None
 
     async def _with_retry_async(self, func, *args, **kwargs):
-        """
-        Execute an async function with retry logic.
-
-        Args:
-            func: Async function to execute
-            *args: Positional arguments for function
-            **kwargs: Keyword arguments for function
-
-        Returns:
-            Any: Function result or None if all retries failed
-        """
+        """Execute an async function with retry logic, tolerating sync callables."""
         attempts = 0
         last_error = None
-
         while attempts < self.retry_attempts:
             try:
                 if not await self._ensure_authenticated():
                     logger.error("Authentication failed, cannot execute function")
                     return None
-
-                result = await func(*args, **kwargs)
+                value = func(*args, **kwargs)
+                result = await self._maybe_await(value)
                 self.last_action = datetime.now()
                 return result
-
             except Exception as e:
                 attempts += 1
                 last_error = e
                 logger.warning(f"Error executing async function ({attempts}/{self.retry_attempts}): {str(e)}")
-
                 if attempts < self.retry_attempts:
                     sleep_time = self.retry_delay * attempts
                     logger.info(f"Retrying in {sleep_time} seconds...")
-                    await asyncio.sleep(sleep_time)  # Use async sleep
-
+                    await asyncio.sleep(sleep_time)
         logger.error(f"All async retry attempts failed: {str(last_error)}")
         return None
 
     def get_balance(self) -> float:
-        """
-        Get account balance (sync, but safe for async pyquotex).
-
-        Returns:
-            float: Account balance
-        """
+        """Get account balance (sync path using direct client call)."""
         try:
-            # Always use the async version, run in a new event loop if needed
-            import asyncio
-            if asyncio.get_event_loop().is_running():
-                # If already in an event loop, use async version
-                coro = self.get_balance_async()
-                # Run coroutine in the current loop and block until result is available
-                return asyncio.get_event_loop().run_until_complete(coro)
-            else:
-                return asyncio.run(self.get_balance_async())
+            with perf_logger.measure("get_balance"):
+                balance = self._with_retry(lambda: getattr(self.client, 'get_balance')())
+                if balance is None:
+                    logger.error("Failed to get balance")
+                    return 0.0
+                logger.debug(f"Current balance: {balance}")
+                return float(balance)
         except Exception as e:
             logger.error(f"Error in get_balance: {str(e)}")
             return 0.0
@@ -333,12 +309,10 @@ class QuotexAdapter:
         """
         with perf_logger.measure("get_balance_async"):
             try:
-                # Use the async retry wrapper
-                balance = await self._with_retry_async(lambda: self.client.get_balance())
+                balance = await self._with_retry_async(lambda: getattr(self.client, 'get_balance')())
                 if balance is None:
                     logger.error("Failed to get balance")
                     return 0.0
-
                 logger.debug(f"Current balance: {balance}")
                 return float(balance)
             except Exception as e:
@@ -354,11 +328,9 @@ class QuotexAdapter:
         """
         with perf_logger.measure("get_assets"):
             assets = self._with_retry(lambda: self.client.get_available_assets())
-
             if not assets:
                 logger.error("Failed to get available assets")
                 return []
-
             logger.debug(f"Available assets: {len(assets)} assets")
             return assets
 
@@ -372,11 +344,9 @@ class QuotexAdapter:
         with perf_logger.measure("get_assets_async"):
             try:
                 assets = await self._with_retry_async(lambda: self.client.get_available_assets())
-
                 if not assets:
                     logger.error("Failed to get available assets")
                     return []
-
                 logger.debug(f"Available assets: {len(assets)} assets")
                 return assets
             except Exception as e:
@@ -401,48 +371,36 @@ class QuotexAdapter:
 
         tf_seconds = timeframe * 60 if timeframe < 1000 else timeframe
         cache_key = f"{asset}_{tf_seconds}"
-
         if (cache_key in self.candle_cache and
             cache_key in self.last_cache_update and
             (datetime.now() - self.last_cache_update[cache_key]).total_seconds() < (tf_seconds / 4)):
             logger.debug(f"Using cached candles for {asset} {timeframe}m")
             return self.candle_cache[cache_key]
-
         with perf_logger.measure(f"get_candles_{timeframe}"):
             try:
-                # Ensure the required 'period' argument is passed
                 if hasattr(self.client, 'get_candles'):
                     raw_candles = self.client.get_candles(asset, tf_seconds, count, period=tf_seconds)
                 else:
                     logger.error("Quotex client does not support candle fetching.")
                     return pd.DataFrame() if _HAS_PANDAS else []
-
                 if not raw_candles or not isinstance(raw_candles, list):
                     logger.error(f"Invalid or empty candle data for {asset} {timeframe}m")
                     return pd.DataFrame() if _HAS_PANDAS else []
-
                 candles = pd.DataFrame(raw_candles)
-
                 if 'o' in candles.columns:
                     candles.rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume'}, inplace=True)
-
                 required_columns = ['open', 'high', 'low', 'close']
                 if not all(col in candles.columns for col in required_columns):
                     logger.error(f"Missing required columns in candle data for {asset} {timeframe}m")
                     return pd.DataFrame() if _HAS_PANDAS else []
-
                 if 'volume' not in candles.columns:
                     candles['volume'] = 1.0
-
                 if 'timestamp' not in candles.columns:
                     candles['timestamp'] = pd.date_range(end=datetime.now(), periods=len(candles), freq=f"{timeframe}min")
-
                 self.candle_cache[cache_key] = candles
                 self.last_cache_update[cache_key] = datetime.now()
-
                 logger.debug(f"Retrieved {len(candles)} candles for {asset} {timeframe}m")
                 return candles
-
             except Exception as e:
                 logger.error(f"Error fetching candles for {asset}: {e}")
                 return pd.DataFrame() if _HAS_PANDAS else []
@@ -465,48 +423,35 @@ class QuotexAdapter:
 
         tf_seconds = timeframe * 60 if timeframe < 1000 else timeframe
         cache_key = f"{asset}_{tf_seconds}"
-
         if (cache_key in self.candle_cache and
             cache_key in self.last_cache_update and
             (datetime.now() - self.last_cache_update[cache_key]).total_seconds() < (tf_seconds / 4)):
             logger.debug(f"Using cached candles for {asset} {timeframe}m")
             return self.candle_cache[cache_key]
-
         with perf_logger.measure(f"get_candles_async_{timeframe}"):
             try:
-                # Ensure the required 'period' argument is passed
                 if hasattr(self.client, 'get_candles_async'):
-                    raw_candles = await self.client.get_candles_async(asset, tf_seconds, count, period=tf_seconds)
+                    raw_candles = await self._with_retry_async(lambda: self.client.get_candles_async(asset, tf_seconds, count, period=tf_seconds))
                 else:
-                    logger.error("Quotex client does not support async candle fetching.")
-                    return pd.DataFrame() if _HAS_PANDAS else []
-
+                    raw_candles = await self._with_retry_async(lambda: self.client.get_candles(asset, tf_seconds, count, period=tf_seconds))
                 if not raw_candles or not isinstance(raw_candles, list):
                     logger.error(f"Invalid or empty candle data for {asset} {timeframe}m")
                     return pd.DataFrame() if _HAS_PANDAS else []
-
                 candles = pd.DataFrame(raw_candles)
-
                 if 'o' in candles.columns:
                     candles.rename(columns={'o': 'open', 'h': 'high', 'l': 'low', 'c': 'close', 'v': 'volume'}, inplace=True)
-
                 required_columns = ['open', 'high', 'low', 'close']
                 if not all(col in candles.columns for col in required_columns):
                     logger.error(f"Missing required columns in candle data for {asset} {timeframe}m")
                     return pd.DataFrame() if _HAS_PANDAS else []
-
                 if 'volume' not in candles.columns:
                     candles['volume'] = 1.0
-
                 if 'timestamp' not in candles.columns:
                     candles['timestamp'] = pd.date_range(end=datetime.now(), periods=len(candles), freq=f"{timeframe}min")
-
                 self.candle_cache[cache_key] = candles
                 self.last_cache_update[cache_key] = datetime.now()
-
                 logger.debug(f"Retrieved {len(candles)} candles for {asset} {timeframe}m")
                 return candles
-
             except Exception as e:
                 logger.error(f"Error fetching candles for {asset}: {e}")
                 return pd.DataFrame() if _HAS_PANDAS else []
@@ -533,10 +478,7 @@ class QuotexAdapter:
         if direction not in ['call', 'put']:
             logger.error(f"Invalid direction: {direction}")
             return None
-
-        # Convert minutes to seconds
         expiration_seconds = expiration * 60
-
         with perf_logger.measure("buy_simple"):
             try:
                 trade_result = self._with_retry(
@@ -547,14 +489,12 @@ class QuotexAdapter:
                         expired=expiration_seconds
                     )
                 )
-
                 if trade_result and isinstance(trade_result, dict):
                     logger.info(f"Trade executed: {direction} {asset} ${amount} {expiration}m")
                     return trade_result
                 else:
                     logger.error(f"Trade failed: {direction} {asset} ${amount}")
                     return None
-
             except Exception as e:
                 logger.error(f"Error executing trade: {str(e)}")
                 return None
@@ -581,10 +521,7 @@ class QuotexAdapter:
         if direction not in ['call', 'put']:
             logger.error(f"Invalid direction: {direction}")
             return None
-
-        # Convert minutes to seconds
         expiration_seconds = expiration * 60
-
         with perf_logger.measure("buy_simple_async"):
             try:
                 trade_result = await self._with_retry_async(
@@ -595,14 +532,12 @@ class QuotexAdapter:
                         expired=expiration_seconds
                     )
                 )
-
                 if trade_result and isinstance(trade_result, dict):
                     logger.info(f"Trade executed: {direction} {asset} ${amount} {expiration}m")
                     return trade_result
                 else:
                     logger.error(f"Trade failed: {direction} {asset} ${amount}")
                     return None
-
             except Exception as e:
                 logger.error(f"Error executing trade: {str(e)}")
                 return None
@@ -631,10 +566,7 @@ class QuotexAdapter:
         if direction not in ['call', 'put']:
             logger.error(f"Invalid direction: {direction}")
             return None
-
-        # Convert minutes to seconds
         expiration_seconds = expiration * 60
-
         with perf_logger.measure("buy_and_check_win"):
             try:
                 trade_result = self._with_retry(
@@ -646,21 +578,17 @@ class QuotexAdapter:
                         max_wait=max_wait
                     )
                 )
-
                 if trade_result and isinstance(trade_result, dict):
                     win = trade_result.get('win', False)
                     profit = trade_result.get('profit', 0)
-
                     if win:
                         logger.info(f"Trade WON: {direction} {asset} ${amount}, profit: ${profit}")
                     else:
                         logger.info(f"Trade LOST: {direction} {asset} ${amount}, profit: ${profit}")
-
                     return trade_result
                 else:
                     logger.error(f"Trade failed or timeout: {direction} {asset} ${amount}")
                     return None
-
             except Exception as e:
                 logger.error(f"Error executing trade and checking win: {str(e)}")
                 return None
@@ -689,10 +617,7 @@ class QuotexAdapter:
         if direction not in ['call', 'put']:
             logger.error(f"Invalid direction: {direction}")
             return None
-
-        # Convert minutes to seconds
         expiration_seconds = expiration * 60
-
         with perf_logger.measure("buy_and_check_win_async"):
             try:
                 trade_result = await self._with_retry_async(
@@ -704,21 +629,17 @@ class QuotexAdapter:
                         max_wait=max_wait
                     )
                 )
-
                 if trade_result and isinstance(trade_result, dict):
                     win = trade_result.get('win', False)
                     profit = trade_result.get('profit', 0)
-
                     if win:
                         logger.info(f"Trade WON: {direction} {asset} ${amount}, profit: ${profit}")
                     else:
                         logger.info(f"Trade LOST: {direction} {asset} ${amount}, profit: ${profit}")
-
                     return trade_result
                 else:
                     logger.error(f"Trade failed or timeout: {direction} {asset} ${amount}")
                     return None
-
             except Exception as e:
                 logger.error(f"Error executing trade and checking win: {str(e)}")
                 return None
@@ -736,29 +657,19 @@ class QuotexAdapter:
         # Check cache first
         if asset in self.asset_info_cache:
             return self.asset_info_cache[asset]
-
         with perf_logger.measure("get_asset_info"):
             try:
-                # pyquotex doesn't have a direct method for this
-                # We'll extract what we can from available assets
                 assets = self._with_retry(lambda: self.client.get_available_assets())
-
                 if not assets:
                     logger.error("Failed to get available assets")
                     return {}
-
-                # Find our asset in the list
                 asset_info = {}
                 for a in assets:
                     if isinstance(a, dict) and a.get('name') == asset:
                         asset_info = a
                         break
-
-                # Cache the results
                 self.asset_info_cache[asset] = asset_info
-
                 return asset_info
-
             except Exception as e:
                 logger.error(f"Error getting asset info for {asset}: {str(e)}")
                 return {}
@@ -803,7 +714,6 @@ class QuotexAdapter:
             return []
         try:
             with perf_logger.measure("get_markets"):
-                # pyquotex exposes assets via self.client.get_all_assets(lang="en")
                 assets = self.client.get_all_assets(lang="en")
                 if not assets or not isinstance(assets, list):
                     logger.warning("No market data returned from Quotex.")

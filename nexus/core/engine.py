@@ -29,10 +29,11 @@ class EngineState:
 class NexusEngine:
     """Main engine facade for trading and tests."""
 
-    def __init__(self, settings: NexusSettings, demo_mode: bool = True, auto_login: bool = False) -> None:
+    def __init__(self, settings: NexusSettings, demo_mode: bool = True, auto_login: Optional[bool] = None) -> None:
         self.settings = settings
         self.demo_mode = demo_mode
-        self.auto_login = auto_login
+        # Prefer explicit param; fallback to settings.auto_login
+        self.auto_login = bool(settings.auto_login) if auto_login is None else bool(auto_login)
         self.strategy_registry: Dict[str, Any] = {}
         self.model_registry: Dict[str, Any] = {}
         self.risk_registry: Dict[str, Any] = {}
@@ -85,6 +86,12 @@ class NexusEngine:
                 demo_mode=bool(qcfg.demo_mode),
                 use_real=not self.demo_mode,
             )
+            # If session bootstrapping provided via config/.env, apply before connect
+            try:
+                if any([qcfg.user_agent, qcfg.cookies, qcfg.ssid]):
+                    self._quotex.set_session(qcfg.user_agent or "", qcfg.cookies, qcfg.ssid)  # type: ignore[attr-defined]
+            except Exception as e:
+                logger.debug(f"Session injection not applied: {e}")
         try:
             await self._quotex.connect()  # type: ignore[attr-defined]
             return True

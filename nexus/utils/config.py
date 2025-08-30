@@ -3,6 +3,7 @@
 import yaml
 from pathlib import Path
 from typing import Optional, Union
+import os
 
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +20,10 @@ class QuotexSettings(BaseModel):
     lang: str = "en"
     reconnect_attempts: int = 3
     connection_timeout: int = 30
+    # Optional browser/session parameters for seamless auth
+    user_agent: Optional[str] = None
+    cookies: Optional[str] = None
+    ssid: Optional[str] = None
 
 class TradingSettings(BaseModel):
     """Trading settings."""
@@ -118,6 +123,8 @@ class NexusSettings(BaseSettings):
     logs_dir: str = "logs"
     version: str = "2.0.0"
     debug_mode: bool = False
+    # Prominent flag to enable broker auto-login (can be set via .env: AUTO_LOGIN=true)
+    auto_login: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -127,7 +134,9 @@ class NexusSettings(BaseSettings):
 
 
 def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:
-    """Load configuration from YAML; create defaults if missing."""
+    """Load configuration from YAML; create defaults if missing.
+    Environment variables from .env or process override key fields for convenience.
+    """
     if config_path is None:
         config_path = Path("config.yaml")
 
@@ -143,6 +152,41 @@ def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings
 
         _ = OmegaConf.create(config_data)
         settings = NexusSettings(**config_data)
+
+        # Environment overrides for prominent fields
+        def _env_bool(key: str, default: Optional[bool] = None) -> Optional[bool]:
+            val = os.getenv(key)
+            if val is None:
+                return default
+            return val.strip().lower() in {"1", "true", "yes", "on"}
+
+        overrides = {
+            "AUTO_LOGIN": _env_bool("AUTO_LOGIN"),
+            "QUOTEX__EMAIL": os.getenv("QUOTEX__EMAIL"),
+            "QUOTEX__PASSWORD": os.getenv("QUOTEX__PASSWORD"),
+            "QUOTEX__DEMO_MODE": _env_bool("QUOTEX__DEMO_MODE"),
+            "QUOTEX__LANG": os.getenv("QUOTEX__LANG"),
+            "QUOTEX__USER_AGENT": os.getenv("QUOTEX__USER_AGENT"),
+            "QUOTEX__COOKIES": os.getenv("QUOTEX__COOKIES"),
+            "QUOTEX__SSID": os.getenv("QUOTEX__SSID"),
+        }
+        if overrides["AUTO_LOGIN"] is not None:
+            settings.auto_login = bool(overrides["AUTO_LOGIN"])  # type: ignore[assignment]
+        if overrides["QUOTEX__EMAIL"]:
+            settings.quotex.email = str(overrides["QUOTEX__EMAIL"])  # type: ignore[assignment]
+        if overrides["QUOTEX__PASSWORD"]:
+            settings.quotex.password = str(overrides["QUOTEX__PASSWORD"])  # type: ignore[assignment]
+        if overrides["QUOTEX__DEMO_MODE"] is not None:
+            settings.quotex.demo_mode = bool(overrides["QUOTEX__DEMO_MODE"])  # type: ignore[assignment]
+        if overrides["QUOTEX__LANG"]:
+            settings.quotex.lang = str(overrides["QUOTEX__LANG"])  # type: ignore[assignment]
+        if overrides["QUOTEX__USER_AGENT"]:
+            settings.quotex.user_agent = str(overrides["QUOTEX__USER_AGENT"])  # type: ignore[assignment]
+        if overrides["QUOTEX__COOKIES"]:
+            settings.quotex.cookies = str(overrides["QUOTEX__COOKIES"])  # type: ignore[assignment]
+        if overrides["QUOTEX__SSID"]:
+            settings.quotex.ssid = str(overrides["QUOTEX__SSID"])  # type: ignore[assignment]
+
         logger.info(f"Configuration loaded from {config_path}")
         return settings
 
@@ -162,7 +206,8 @@ def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
             lang="en"
         ),
         trading=TradingSettings(),
-        ai=AISettings()
+        ai=AISettings(),
+        auto_login=False,
     )
 
     if save_path:
