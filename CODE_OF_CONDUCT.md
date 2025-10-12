@@ -10,9 +10,9 @@
 
 ## Our Commitment
 
-We, as members, contributors, and leaders of the NEXUS project, pledge to make participation in our community a respectful, harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+As the maintainer and contributors of the NEXUS project, we pledge to make participation in our community a respectful, harassment-free experience for everyone, regardless of age, body size, visible or invisible disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
 
-We commit to fostering an open, welcoming, diverse, inclusive, and healthy community.
+We are committed to fostering an open, welcoming, diverse, inclusive, and healthy community.
 
 ---
 
@@ -43,7 +43,7 @@ This Code of Conduct applies to all community spaces, including GitHub, Discord,
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders at <community@nexus.ai> (or via GitHub Discussions/Issues if urgent). All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported via GitHub Issues or by contacting the project maintainer. All complaints will be reviewed and investigated promptly and fairly.
 
 Community leaders are responsible for clarifying and enforcing our standards of acceptable behavior and will take appropriate and fair corrective action in response to any behavior they deem inappropriate, threatening, offensive, or harmful.
 

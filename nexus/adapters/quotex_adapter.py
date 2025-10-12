@@ -1,7 +1,7 @@
 # Async Quotex adapter wrapper delegating to the real integration
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from nexus.adapters.quotex import (
     QuotexAdapter as RealQuotexAdapter,
@@ -47,6 +47,13 @@ class QuotexAdapter:
         except Exception:
             pass
 
+    async def set_practice_mode(self, practice: bool) -> None:
+        """Force broker to use PRACTICE or REAL account after connecting."""
+        try:
+            await self._real.set_practice_mode(bool(practice))  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
     async def connect(self) -> bool:
         try:
             ok = await self._real.login()
@@ -66,6 +73,37 @@ class QuotexAdapter:
             return float(bal or 0.0)
         except Exception:
             return 0.0
+
+    async def get_available_assets(self) -> List[str]:
+        """Return a list of available asset symbols from the broker."""
+        try:
+            if hasattr(self._real, "get_available_assets_async"):
+                return await self._real.get_available_assets_async()  # type: ignore[attr-defined]
+            return self._real.get_available_assets()
+        except Exception:
+            return []
+
+    async def get_assets_with_payouts_async(self) -> List[Dict[str, Any]]:
+        """Return assets with payout info when supported by the real adapter."""
+        try:
+            if hasattr(self._real, "get_assets_with_payouts_async"):
+                return await self._real.get_assets_with_payouts_async()  # type: ignore[attr-defined]
+            # Fallback: map plain list to dicts with zero payout
+            syms = await self.get_available_assets()
+            return [{"symbol": s, "payout": 0.0} for s in syms]
+        except Exception:
+            return []
+
+    async def get_candles_async(self, symbol: str, timeframe_sec: int, limit: int = 200) -> Optional[List[Dict[str, float]]]:
+        """Fetch recent candles for a symbol with timeframe in seconds."""
+        try:
+            if hasattr(self._real, "get_candles_async"):
+                return await self._real.get_candles_async(symbol, timeframe_sec, limit)  # type: ignore[attr-defined]
+            if hasattr(self._real, "get_candles"):
+                return self._real.get_candles(symbol, timeframe_sec, limit)  # type: ignore[attr-defined]
+            return None
+        except Exception:
+            return None
 
     async def buy_simple(self, asset: str, amount: float, direction: str, duration: int) -> Optional[Dict[str, Any]]:
         try:

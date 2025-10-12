@@ -8,7 +8,7 @@ connection, and trading operations with the Quotex platform.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 
 import pandas as pd
 # Optional pyquotex import
@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - environment without pyquotex
     _HAS_PYQUOTEX = False
 
 logger = logging.getLogger("nexus.client")
+
 
 class QuotexClient:
     """
@@ -57,10 +58,11 @@ class QuotexClient:
                 email=self.email,
                 password=self.password,
                 lang=self.lang
-            )
+            )  # type: ignore[call-arg]
 
-            # Connect to Quotex
-            await self.client.connect()  # type: ignore[attr-defined]
+            # Connect to Quotex (run in executor to tolerate sync implementations)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, lambda: getattr(self.client, "connect")())  # type: ignore[attr-defined]
 
             # Set connected flag
             self.connected = True
@@ -105,31 +107,34 @@ class QuotexClient:
             raise RuntimeError("Not connected to Quotex")
 
         try:
-            balance = await self.client.get_balance()  # type: ignore[attr-defined]
+            loop = asyncio.get_event_loop()
+            c = self.client
+            assert c is not None
+            # get_balance might be sync in some versions
+            balance = await loop.run_in_executor(None, lambda: getattr(c, "get_balance")())  # type: ignore[attr-defined]
 
             # Try to get profile info for currency and user_id
-            currency = None
-            user_id = None
+            currency: Optional[str] = None
+            user_id: Optional[str] = None
 
             # Try different ways to access profile data
-            if hasattr(self.client, 'profile') and getattr(self.client, 'profile'):
-                profile = getattr(self.client, 'profile')
-                # Access attributes directly rather than using .get()
+            profile = getattr(c, 'profile', None)
+            if profile is not None:
                 if hasattr(profile, 'currency'):
-                    currency = profile.currency  # type: ignore[attr-defined]
+                    currency = getattr(profile, 'currency')  # type: ignore[attr-defined]
                 if hasattr(profile, 'user_id'):
-                    user_id = profile.user_id  # type: ignore[attr-defined]
-            elif hasattr(self.client, 'get_profile'):
-                profile = await self.client.get_profile()  # type: ignore[attr-defined]
-                # Access attributes directly rather than using .get()
-                if hasattr(profile, 'currency'):
-                    currency = profile.currency  # type: ignore[attr-defined]
-                if hasattr(profile, 'user_id'):
-                    user_id = profile.user_id  # type: ignore[attr-defined]
-                # If it's a dictionary type profile (uncommon but possible)
-                elif isinstance(profile, dict):
-                    currency = profile.get('currency')
-                    user_id = profile.get('user_id')
+                    user_id = getattr(profile, 'user_id')  # type: ignore[attr-defined]
+            else:
+                get_profile = getattr(c, 'get_profile', None)
+                if callable(get_profile):
+                    prof = await loop.run_in_executor(None, get_profile)  # type: ignore[misc]
+                    if hasattr(prof, 'currency'):
+                        currency = getattr(prof, 'currency')  # type: ignore[attr-defined]
+                    if hasattr(prof, 'user_id'):
+                        user_id = getattr(prof, 'user_id')  # type: ignore[attr-defined]
+                    if isinstance(prof, dict):
+                        currency = currency or prof.get('currency')
+                        user_id = user_id or prof.get('user_id')
 
             # Fallback if not found
             if currency is None:
@@ -138,7 +143,7 @@ class QuotexClient:
                 user_id = 'unknown'
 
             self.account_info = {
-                "balance": balance,
+                "balance": float(balance) if balance is not None else 0.0,
                 "currency": currency,
                 "user_id": user_id,
                 "last_updated": datetime.now()
@@ -169,28 +174,30 @@ class QuotexClient:
         """
         if not self.client or not self.connected:
             raise RuntimeError("Not connected to Quotex")
-
+        c = self.client  # capture for mypy
+        assert c is not None
         try:
             # Get candles - try different method names that might exist in the pyquotex library
             loop = asyncio.get_event_loop()
 
             # Try different possible method names for getting candles
-            if hasattr(self.client, 'get_candles'):
-                candles = await loop.run_in_executor(None, lambda: self.client.get_candles(asset, timeframe, count))  # type: ignore[attr-defined]
-            elif hasattr(self.client, 'get_history'):
-                candles = await loop.run_in_executor(None, lambda: self.client.get_history(asset, timeframe, count))  # type: ignore[attr-defined]
-            elif hasattr(self.client, 'get_historical_data'):
-                candles = await loop.run_in_executor(None, lambda: self.client.get_historical_data(asset, timeframe, count))  # type: ignore[attr-defined]
+            candles: Any
+            if hasattr(c, 'get_candles'):
+                candles = await loop.run_in_executor(None, lambda: getattr(c, 'get_candles')(asset, timeframe, count))  # type: ignore[attr-defined]
+            elif hasattr(c, 'get_history'):
+                candles = await loop.run_in_executor(None, lambda: getattr(c, 'get_history')(asset, timeframe, count))  # type: ignore[attr-defined]
+            elif hasattr(c, 'get_historical_data'):
+                candles = await loop.run_in_executor(None, lambda: getattr(c, 'get_historical_data')(asset, timeframe, count))  # type: ignore[attr-defined]
             else:
                 # If we can't find an appropriate method, log the available methods and raise an error
-                methods = [m for m in dir(self.client) if not m.startswith('_')]
-                raise AttributeError(f"Could not find candle retrieval method. Available: {methods}")
+                methods: List[str] = [m for m in dir(c) if not m.startswith('_')]
+                raise AttributeError(f"No candle method found on client. Available methods: {methods}")
 
             # Convert to DataFrame
             df = pd.DataFrame(candles)
 
             # Rename columns if needed and ensure proper types
-            if 'time' in df.columns:
+            if 'time' in df.columns and 'timestamp' not in df.columns:
                 df.rename(columns={'time': 'timestamp'}, inplace=True)
 
             # Ensure all required columns exist
@@ -200,8 +207,8 @@ class QuotexClient:
                     raise ValueError(f"Required column '{col}' not found in candle data")
 
             # Convert timestamp to datetime if it's not already
-            if not pd.api.types.is_datetime64_dtype(df['timestamp']):
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
+            if not pd.api.types.is_datetime64_any_dtype(df['timestamp']):
+                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s', errors='coerce')
 
             logger.debug(f"Retrieved {len(df)} candles for {asset} at {timeframe}s timeframe")
             return df
@@ -210,10 +217,10 @@ class QuotexClient:
             raise
 
     async def place_trade(
-        self, 
-        asset: str, 
-        amount: float, 
-        direction: str, 
+        self,
+        asset: str,
+        amount: float,
+        direction: str,
         expiration: int,
         wait_for_result: bool = True
     ) -> Dict[str, Any]:
@@ -233,7 +240,8 @@ class QuotexClient:
         if not self.client or not self.connected:
             raise RuntimeError("Not connected to Quotex")
 
-        # Validate direction
+        c = self.client
+        assert c is not None
         if direction.lower() not in ["call", "put"]:
             raise ValueError("Direction must be 'call' or 'put'")
 
@@ -242,22 +250,33 @@ class QuotexClient:
 
             if wait_for_result:
                 # Use buy_and_check_win to place trade and wait for result
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: self.client.buy_and_check_win(
-                        asset=asset,
-                        amount=amount,
-                        action=direction.lower(),
-                        expirations_times=expiration
+                if hasattr(c, 'buy_and_check_win'):
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: getattr(c, 'buy_and_check_win')(
+                            asset=asset,
+                            action=direction.lower(),
+                            amount=float(amount),
+                            expirations_times=int(expiration)
+                        )
                     )  # type: ignore[attr-defined]
-                )
+                else:
+                    # Fallback: place simple trade and return order id
+                    result = await loop.run_in_executor(
+                        None,
+                        lambda: getattr(c, 'buy_simple')(
+                            asset=asset,
+                            action=direction.lower(),
+                            amount=float(amount),
+                            expirations_times=int(expiration)
+                        )
+                    )  # type: ignore[attr-defined]
 
-                # Process result
                 trade_info = {
                     "asset": asset,
-                    "amount": amount,
+                    "amount": float(amount),
                     "direction": direction,
-                    "expiration": expiration,
+                    "expiration": int(expiration),
                     "timestamp": datetime.now(),
                     "result": result
                 }
@@ -271,19 +290,19 @@ class QuotexClient:
                 # Use buy_simple to place trade without waiting
                 result = await loop.run_in_executor(
                     None,
-                    lambda: self.client.buy_simple(
+                    lambda: getattr(c, 'buy_simple')(
                         asset=asset,
-                        amount=amount,
                         action=direction.lower(),
-                        expirations_times=expiration
-                    )  # type: ignore[attr-defined]
-                )
+                        amount=float(amount),
+                        expirations_times=int(expiration)
+                    )
+                )  # type: ignore[attr-defined]
 
                 trade_info = {
                     "asset": asset,
-                    "amount": amount,
+                    "amount": float(amount),
                     "direction": direction,
-                    "expiration": expiration,
+                    "expiration": int(expiration),
                     "timestamp": datetime.now(),
                     "trade_id": result
                 }
@@ -309,7 +328,6 @@ class QuotexClient:
             raise RuntimeError("Not connected to Quotex")
 
         # Since pyquotex doesn't provide a method to get available assets,
-        # we'll return a common set of assets that are typically available on Quotex
         common_assets = [
             "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
             "EURJPY", "GBPJPY", "AUDJPY", "EURGBP", "EURAUD", "GBPAUD",

@@ -1,34 +1,30 @@
-# NEXUS Security Policy (Current Minimal Scope)
+# NEXUS Security Policy
 
-This project is an early-stage prototype. No production credential handling or encryption logic is implemented yet. Treat it as **research-only** software.
+Security policy for the NEXUS autonomous trading system.
 
 ## Supported Version
 Latest `main` branch only.
 
 ## Reporting Vulnerabilities
-Email: security@nexus.ai (placeholder) or open a private advisory on GitHub if available. Please include:
+Report security vulnerabilities via GitHub Issues (mark as security-related). Include:
 - Description & impact
 - Reproduction steps / PoC
 - Affected modules
 
-We will acknowledge legitimate reports as soon as feasible; response times are best-effort.
-
 ## Current Security Posture
 | Area | Status | Notes |
 |------|--------|-------|
-| Credential storage | Not implemented | Config holds values in plaintext YAML (local) |
-| Network calls | Not active | Live pyquotex integration not wired yet |
-| Logging | Plaintext | Override audit only |
-| Encryption | None | Future roadmap item |
-| Secrets in repo | Should be none | Do not commit real credentials |
+| Credential storage | Plaintext | .env file (local only) |
+| Network calls | Active | Broker API integration |
+| Logging | Plaintext | Standard logging |
+| Encryption | None | Future enhancement |
+| Secrets in repo | None | Use .env (gitignored) |
 
-## Best Practices (User)
-- Keep repository private if experimenting with real credentials.
-- Do **not** trade live funds with this alpha.
-- Sanitize logs before sharing.
-- Remove or encrypt `config.yaml` if adding credentials.
-
-## Out of Scope (For Now)
+## Best Practices
+- Keep `.env` file secure and never commit it
+- Use demo mode for testing
+- Sanitize logs before sharing
+- Review code before trading with real funds
 - Formal threat modeling
 - Penetration testing
 - Secure secret management

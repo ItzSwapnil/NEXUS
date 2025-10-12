@@ -7,6 +7,7 @@ from typing import Tuple
 
 def exponential_moving_average(data: np.ndarray, span: int) -> np.ndarray:
     """Compute EMA."""
+    data = np.asarray(data, dtype=float)
     alpha = 2 / (span + 1)
     ema = np.zeros_like(data)
     ema[0] = data[0]
@@ -17,6 +18,7 @@ def exponential_moving_average(data: np.ndarray, span: int) -> np.ndarray:
 
 def simple_moving_average(data: np.ndarray, window: int) -> np.ndarray:
     """Compute SMA."""
+    data = np.asarray(data, dtype=float)
     result = np.zeros_like(data)
     result[:] = np.nan
     for i in range(window - 1, len(data)):
@@ -26,6 +28,7 @@ def simple_moving_average(data: np.ndarray, window: int) -> np.ndarray:
 
 def relative_strength_index(data: np.ndarray, window: int = 14) -> np.ndarray:
     """Compute RSI."""
+    data = np.asarray(data, dtype=float)
     delta = np.zeros_like(data)
     delta[1:] = data[1:] - data[:-1]
     gain = np.zeros_like(delta)
@@ -50,6 +53,7 @@ def relative_strength_index(data: np.ndarray, window: int = 14) -> np.ndarray:
 
 def bollinger_bands(data: np.ndarray, window: int = 20, num_std: float = 2.0) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute Bollinger Bands (middle, upper, lower)."""
+    data = np.asarray(data, dtype=float)
     middle_band = simple_moving_average(data, window)
     rolling_std = np.zeros_like(middle_band)
     for i in range(window - 1, len(data)):
@@ -61,6 +65,7 @@ def bollinger_bands(data: np.ndarray, window: int = 20, num_std: float = 2.0) ->
 
 def macd(data: np.ndarray, fast_period: int = 12, slow_period: int = 26, signal_period: int = 9) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute MACD line, signal, and histogram."""
+    data = np.asarray(data, dtype=float)
     ema_fast = exponential_moving_average(data, fast_period)
     ema_slow = exponential_moving_average(data, slow_period)
     macd_line = ema_fast - ema_slow
@@ -71,6 +76,9 @@ def macd(data: np.ndarray, fast_period: int = 12, slow_period: int = 26, signal_
 
 def average_true_range(high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int = 14) -> np.ndarray:
     """Compute ATR."""
+    high = np.asarray(high, dtype=float)
+    low = np.asarray(low, dtype=float)
+    close = np.asarray(close, dtype=float)
     prev_close = np.zeros_like(close)
     prev_close[1:] = close[:-1]
     tr1 = high - low
@@ -86,6 +94,9 @@ def average_true_range(high: np.ndarray, low: np.ndarray, close: np.ndarray, win
 
 def detect_supports_and_resistances(high: np.ndarray, low: np.ndarray, close: np.ndarray, window: int = 10, threshold: float = 0.02) -> Tuple[np.ndarray, np.ndarray]:
     """Detect simple supports and resistances."""
+    high = np.asarray(high, dtype=float)
+    low = np.asarray(low, dtype=float)
+    close = np.asarray(close, dtype=float)
     supports = np.zeros_like(close)
     resistances = np.zeros_like(close)
     if len(close) < window * 2 + 1:
@@ -108,9 +119,9 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     df = data.copy()
     if len(df) < 50:
         return df
-    close = df['close'].values
-    high = df['high'].values
-    low = df['low'].values
+    close = df['close'].to_numpy(dtype=float)
+    high = df['high'].to_numpy(dtype=float)
+    low = df['low'].to_numpy(dtype=float)
     df['ema_short'] = exponential_moving_average(close, 9)
     df['ema_medium'] = exponential_moving_average(close, 21)
     df['ema_long'] = exponential_moving_average(close, 50)
@@ -131,7 +142,7 @@ def calculate_features(data: pd.DataFrame) -> pd.DataFrame:
     df['resistance'] = resistances
     df['daily_return'] = np.zeros_like(close)
     df.loc[1:, 'daily_return'] = (close[1:] - close[:-1]) / close[:-1]
-    returns = df['daily_return'].values
+    returns = df['daily_return'].to_numpy(dtype=float)
     volatility = np.zeros_like(returns)
     for i in range(20, len(returns)):
         volatility[i] = np.std(returns[i-20:i])

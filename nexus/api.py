@@ -9,6 +9,12 @@ from typing import Dict
 
 __all__ = ["health", "metrics"]
 
+# Optional rich printer
+try:
+    from rich import print as rprint  # type: ignore[assignment]
+except Exception:  # pragma: no cover
+    rprint = print  # type: ignore[assignment]
+
 
 def health() -> Dict[str, str]:
     """Return a simple health payload similar to the old /health endpoint."""
@@ -31,6 +37,4 @@ def metrics() -> Dict[str, int | float]:
 
 if __name__ == "__main__":
     # No server to run; print guidance instead.
-    from rich import print as rprint  # type: ignore
-
     rprint("[bold yellow]NEXUS web API has been removed. Use internal Python APIs instead.[/bold yellow]")

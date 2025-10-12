@@ -1,59 +1,50 @@
+"""Lightweight global registry for strategies and models.
+
+This module exposes a simple runtime registry used by CLI and tooling to
+list and resolve strategies or models by name without importing heavy
+subsystems eagerly.
 """
-NEXUS Plugin Registry System
+from __future__ import annotations
 
-This module enables dynamic registration, loading, and management of strategies and models.
-Supports hot-swapping, experimentation, and upgrades for extensibility.
-"""
+from typing import Any, Dict, List, Optional, Callable
 
-import importlib
-import pkgutil
-import logging
-from typing import Dict, Type, List
 
-logger = logging.getLogger("nexus.registry")
+class _Registry:
+    def __init__(self) -> None:
+        # Store callables/classes; keep lightweight to avoid heavy imports at module import time
+        self.strategies: Dict[str, Any] = {}
+        self.models: Dict[str, Any] = {}
 
-class PluginRegistry:
-    """
-    Registry for strategies and models.
-    """
-    def __init__(self):
-        self.strategies: Dict[str, Type] = {}
-        self.models: Dict[str, Type] = {}
+    # -------- strategies --------
+    def register_strategy(self, name: str, obj: Any) -> None:
+        self.strategies[str(name)] = obj
 
-    def register_strategy(self, name: str, cls: Type):
-        logger.info(f"Registering strategy: {name}")
-        self.strategies[name] = cls
-
-    def register_model(self, name: str, cls: Type):
-        logger.info(f"Registering model: {name}")
-        self.models[name] = cls
-
-    def get_strategy(self, name: str) -> Type:
-        return self.strategies.get(name)
-
-    def get_model(self, name: str) -> Type:
-        return self.models.get(name)
+    def unregister_strategy(self, name: str) -> None:
+        self.strategies.pop(str(name), None)
 
     def list_strategies(self) -> List[str]:
-        return list(self.strategies.keys())
+        return sorted(self.strategies.keys())
+
+    def get_strategy(self, name: str) -> Optional[Callable[..., Any]]:
+        obj = self.strategies.get(str(name))
+        return obj
+
+    # -------- models --------
+    def register_model(self, name: str, obj: Any) -> None:
+        self.models[str(name)] = obj
+
+    def unregister_model(self, name: str) -> None:
+        self.models.pop(str(name), None)
 
     def list_models(self) -> List[str]:
-        return list(self.models.keys())
+        return sorted(self.models.keys())
 
-    def load_plugins(self, package: str):
-        """
-        Dynamically discover and load plugins from a package.
-        """
-        for _, modname, ispkg in pkgutil.iter_modules([package]):
-            if not ispkg:
-                module = importlib.import_module(f"{package}.{modname}")
-                if hasattr(module, "register_plugin"):
-                    module.register_plugin(self)
+    def get_model(self, name: str) -> Optional[Callable[..., Any]]:
+        obj = self.models.get(str(name))
+        return obj
 
-registry = PluginRegistry()
 
-# Example: auto-register built-in strategies and models
-# from nexus.strategies import meta_strategy
-# registry.register_strategy("meta_strategy", meta_strategy.MetaStrategy)
-# from nexus.intelligence import transformer
-# registry.register_model("transformer", transformer.MarketTransformer)
+# Singleton instance used by the rest of the app
+registry = _Registry()
+
+__all__ = ["registry", "_Registry"]

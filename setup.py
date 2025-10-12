@@ -1,41 +1,18 @@
+#!/usr/bin/env python3
+"""
+NEXUS Setup Configuration
+Author: Swapnil De Sarkar
+
+Minimal setup.py that defers to pyproject.toml.
+For interactive setup, run: python scripts/setup_wizard.py
+"""
+
 from setuptools import setup, find_packages
 
+# All configuration is in pyproject.toml
+# This file exists only for compatibility with older pip versions
 setup(
-    name="nexus",
-    version="2.0.0",
-    description="Self-Evolving, AI-Only Trading Agent for Quotex",
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*", "docs", "scripts"]),
     include_package_data=True,
-    install_requires=[
-        "PySide6",
-        "rich",
-        "pyqtgraph",
-        "pydantic",
-        "pydantic-settings",
-        "omegaconf",
-        "pandas",
-        "duckdb",
-        "pyyaml",
-        "loguru"
-    ],
-    extras_require={
-        "dev": [
-            "pytest",
-            "pytest-asyncio",
-            "mkdocs",
-            "mkdocstrings",
-            "ruff",
-            "black",
-            "flake8",
-            "playwright"
-        ],
-        # Placeholder extra; user must manually install pyquotex from its source
-        "quotex": []
-    },
-    python_requires='>=3.13.6',
-    entry_points={
-        "console_scripts": [
-            "nexus = nexus.main:main"
-        ]
-    }
 )
+

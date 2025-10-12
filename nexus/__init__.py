@@ -1,10 +1,12 @@
-"""NEXUS core package initialization"""
+"""
+NEXUS - Autonomous AI Trading System
+Author: Swapnil De Sarkar
+Created: 2025
+Version: 3.0.0
+"""
 
-# This file ensures that the nexus directory is treated as a package
-# for Python module discovery. This is particularly important for
-# local development where the package is installed in development mode.
-
-__version__ = "2.0.0"
+__version__ = "3.0.0"
+__author__ = "Swapnil De Sarkar"
 __all__ = [
     "core",
     "gui",
@@ -13,6 +15,4 @@ __all__ = [
     "utils",
     "adapters",
     "data",
-    "settings",
-    "models"
 ]

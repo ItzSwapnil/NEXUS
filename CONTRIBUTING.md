@@ -1,34 +1,33 @@
-# Contributing to NEXUS (Lightweight Alpha)
+# Contributing to NEXUS
 
-Thanks for your interest. The project is a minimal sandbox right now; focus contributions on **implemented scope** (catalog, payouts, engine, exploration, GUI polish) or small incremental roadmap steps.
+Contribution guidelines for the NEXUS autonomous AI trading system.
 
 ## Quick Start
 ```bash
 uv venv .venv
-. .venv/Scripts/Activate.ps1   # PowerShell
+.venv\Scripts\activate   # Windows
 uv pip install -e .
-pytest -q   # ensure 21 tests pass
+pytest -q   # ensure tests pass
 ```
-Target Python: **3.13.6**.
+Target Python: **3.12+**.
 
 ## Contribution Guidelines
-- Keep PRs small & focused (easier review).
-- Add / adjust tests when changing logic.
-- Preserve deterministic behaviour for existing tests.
-- Avoid adding heavy dependencies without discussion.
-- Update README / SPEC only for *implemented* features.
+- Keep PRs small & focused
+- Add/adjust tests when changing logic
+- Preserve deterministic behaviour for existing tests
+- Avoid adding heavy dependencies without discussion
+- Update documentation for implemented features
 
 ## Code Style
-- PEP 8 + type hints.
-- Prefer clear, small functions.
-- Log sparingly; keep console noise low for tests.
+- PEP 8 + type hints
+- Clear, small functions
+- Minimal logging for tests
 
 ## Tests
 Run full test suite before opening a PR:
 ```bash
-pytest -q
+pytest -v
 ```
-If adding GUI features, consider adding a lightweight non-blocking smoke test (future enhancement—currently none).
 
 ## Commit Messages
 Readable imperative style (e.g., `engine: clamp emotion values`, `docs: prune outdated roadmap`). Squash fixups prior to merge.

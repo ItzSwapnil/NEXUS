@@ -18,7 +18,6 @@ try:  # pragma: no cover - GUI only
     from PySide6.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
         QTableWidget, QTableWidgetItem, QCheckBox, QSlider, QMessageBox, QGroupBox, QFormLayout, QListWidget,
-        QDialog, QLineEdit, QComboBox, QDialogButtonBox
     )
     from PySide6.QtCore import Qt, QTimer
 except Exception:  # pragma: no cover
@@ -27,42 +26,6 @@ except Exception:  # pragma: no cover
     logger.error("PySide6 not installed; GUI unavailable.")
 
 PAYOUT_COLORS = {"ok": "#2e7d32", "warn": "#f9a825", "bad": "#c62828"}
-
-
-class QuotexLoginDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Quotex Login")
-        self.setModal(True)
-        self.setWindowModality(Qt.ApplicationModal)
-        layout = QFormLayout(self)
-        self.email_input = QLineEdit(self)
-        self.email_input.setPlaceholderText("Email")
-        layout.addRow("Email:", self.email_input)
-        self.password_input = QLineEdit(self)
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setPlaceholderText("Password")
-        layout.addRow("Password:", self.password_input)
-        self.lang_input = QComboBox(self)
-        self.lang_input.addItems(["en", "es", "fr", "de", "ru"])
-        layout.addRow("Language:", self.lang_input)
-        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
-        self.buttons.accepted.connect(self.accept)
-        self.buttons.rejected.connect(self.reject)
-        layout.addRow(self.buttons)
-
-    def showEvent(self, event):
-        super().showEvent(event)
-        if self.parent():
-            geo = self.parent().geometry()
-            self.move(geo.center() - self.rect().center())
-
-    def get_credentials(self):
-        return {
-            "email": self.email_input.text(),
-            "password": self.password_input.text(),
-            "lang": self.lang_input.currentText(),
-        }
 
 
 class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
@@ -103,9 +66,6 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.trade_btn = QPushButton("Execute Test Trade")
         self.trade_btn.clicked.connect(self._execute_test_trade_threaded)
 
-        self.login_btn = QPushButton("Login to Quotex")
-        self.login_btn.clicked.connect(self._show_login_dialog)
-
         self.autonomy_slider = QSlider(Qt.Orientation.Horizontal)
         self.autonomy_slider.setMinimum(0)
         self.autonomy_slider.setMaximum(100)
@@ -114,7 +74,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.autonomy_label = QLabel(f"Autonomy: {self.engine.exploration_controller.cfg.base_epsilon:.2f}")
 
         for w in [self.demo_checkbox, self.filter_checkbox, self.override_btn, self.panic_btn, self.refresh_btn,
-                  self.trade_btn, self.login_btn, self.autonomy_label, self.autonomy_slider]:
+                  self.trade_btn, self.autonomy_label, self.autonomy_slider]:
             controls_layout.addWidget(w)
         controls_layout.addStretch(1)
         root_layout.addLayout(controls_layout)
@@ -157,9 +117,10 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.stats_timer.timeout.connect(self._update_stats)
         self.stats_timer.start()
 
-        # Kick off initial load
+        # Kick off initial load and auto-login
         self._refresh_catalog_threaded()
         self._update_stats()
+        self._auto_login_threaded()
 
     # ------------------------ UI Event Handlers ------------------------ #
     def _toggle_demo_mode(self):
@@ -193,6 +154,30 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self._update_stats()
 
     # ------------------------ Data / Async Ops ------------------------- #
+    def _auto_login_threaded(self):
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(self._auto_login_sync)
+        future.add_done_callback(lambda f: self._on_login_done(f))
+
+    def _auto_login_sync(self):
+        try:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            ok = loop.run_until_complete(self.engine.login_broker())
+            balance = 0.0
+            if ok:
+                # ensure practice/real mode for balance context
+                try:
+                    if getattr(self.engine, "_broker", None) is not None:
+                        loop.run_until_complete(self.engine._broker.set_practice_mode(bool(self.engine.demo_mode)))  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                balance = loop.run_until_complete(self.engine.get_account_balance())
+            return (ok, balance, None if ok else "login failed")
+        except Exception as e:
+            return (False, None, str(e))
+
     def _refresh_catalog_threaded(self):
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(self._refresh_catalog_sync)
@@ -230,6 +215,12 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             asset = self.settings.trading.default_asset
+            # Ensure practice/real mode prior to trade
+            try:
+                if getattr(self.engine, "_broker", None) is not None:
+                    loop.run_until_complete(self.engine._broker.set_practice_mode(bool(self.engine.demo_mode)))  # type: ignore[attr-defined]
+            except Exception:
+                pass
             result = loop.run_until_complete(self.engine.execute_trade(asset, "call", self.settings.trading.base_trade_amount, str(self.settings.trading.default_expiration)))
             return (True, result, None)
         except Exception as e:
@@ -241,7 +232,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         stamp = datetime.now(UTC).strftime('%H:%M:%S')
         asset = self.settings.trading.default_asset
         if success and result and result.get("success"):
-            if "profit" in result:
+            if "profit" in result and result.get("real_executed") is False:
                 self.trade_log.addItem(f"[{stamp}] {asset} WIN +{result['profit']:.2f}")
             else:
                 self.trade_log.addItem(f"[{stamp}] {asset} ORDER PLACED")
@@ -251,30 +242,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             self.trade_log.addItem(f"[{stamp}] {asset} ERROR: {error}")
         self.trade_log.scrollToBottom()
         self._update_stats()
-
-    def _show_login_dialog(self):
-        dialog = QuotexLoginDialog(self)
-        if dialog.exec() == QDialog.Accepted:
-            creds = dialog.get_credentials()
-            self.engine.settings.quotex.email = creds["email"]
-            self.engine.settings.quotex.password = creds["password"]
-            self.engine.settings.quotex.lang = creds["lang"]
-            # Run login in background thread
-            self.status.showMessage("Logging in to Quotex...")
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(self._do_login_sync)
-            future.add_done_callback(lambda f: self._on_login_done(f))
-
-    def _do_login_sync(self):
-        try:
-            import asyncio
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(self.engine.login_broker())
-            balance = loop.run_until_complete(self.engine.get_account_balance())
-            return (True, balance, None)
-        except Exception as e:
-            return (False, None, str(e))
+        self._update_balance_threaded()
 
     def _on_login_done(self, future):
         success, balance, error = future.result()
@@ -295,6 +263,12 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
+            # Set desired practice/real for balance context
+            try:
+                if getattr(self.engine, "_broker", None) is not None:
+                    loop.run_until_complete(self.engine._broker.set_practice_mode(bool(self.engine.demo_mode)))  # type: ignore[attr-defined]
+            except Exception:
+                pass
             balance = loop.run_until_complete(self.engine.get_account_balance())
             return (True, balance, None)
         except Exception as e:

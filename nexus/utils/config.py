@@ -1,16 +1,25 @@
-"""Configuration utilities for NEXUS."""
+"""Dynamic runtime configuration for NEXUS.
 
-import yaml
+Replaces prior file-based YAML config (config.yaml). Settings now load from:
+1. runtime_settings.json (if present)
+2. Environment variables (QUOTEX__EMAIL / QUOTEX__PASSWORD etc.)
+3. In-memory defaults (simulation-safe)
+
+Use save_runtime_settings() to persist changes at runtime.
+"""
+
+import json
 from pathlib import Path
 from typing import Optional, Union
 import os
-
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from omegaconf import OmegaConf
 from nexus.utils.logger import get_nexus_logger
 
 logger = get_nexus_logger("nexus.utils.config")
+RUNTIME_SETTINGS_PATH = Path("runtime_settings.json")
+
+# --- Settings Models (unchanged) ---
 
 class QuotexSettings(BaseModel):
     """Quotex connection settings."""
@@ -124,7 +133,7 @@ class NexusSettings(BaseSettings):
     version: str = "2.0.0"
     debug_mode: bool = False
     # Prominent flag to enable broker auto-login (can be set via .env: AUTO_LOGIN=true)
-    auto_login: bool = False
+    auto_login: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -133,72 +142,107 @@ class NexusSettings(BaseSettings):
     )
 
 
-def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:
-    """Load configuration from YAML; create defaults if missing.
-    Environment variables from .env or process may override only email/password.
+# --- New dynamic load/save helpers ---
+
+def _env_or(default: str, *keys: str) -> str:
+    for k in keys:
+        v = os.getenv(k)
+        if v is not None and v.strip():
+            return v.strip()
+    return default
+
+def _build_defaults() -> NexusSettings:
+    # Prefer building via BaseSettings to load values from .env automatically
+    try:
+        return NexusSettings(
+            trading=TradingSettings(),
+            ai=AISettings(),
+            auto_login=True,
+        )
+    except Exception:
+        # Fallback to manual environment extraction
+        return NexusSettings(
+            quotex=QuotexSettings(
+                email=_env_or("", "QUOTEX__EMAIL", "QUOTEX_EMAIL"),
+                password=_env_or("", "QUOTEX__PASSWORD", "QUOTEX_PASSWORD"),
+                demo_mode=True,
+                lang="en",
+            ),
+            trading=TradingSettings(),
+            ai=AISettings(),
+            auto_login=True,
+        )
+
+def load_runtime_settings(path: Optional[Union[str, Path]] = None) -> NexusSettings:
+    """Load dynamic settings from JSON or construct defaults.
+
+    Args:
+        path: optional override path for runtime settings file.
+    Returns:
+        NexusSettings instance
     """
-    if config_path is None:
-        config_path = Path("config.yaml")
+    p = Path(path) if path else RUNTIME_SETTINGS_PATH
+    if p.exists():
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            settings = NexusSettings(**raw)
+            # Merge with environment-derived settings to ensure .env can override
+            try:
+                env_settings = NexusSettings()  # loads from env/.env per model_config
+                # Override if environment provides non-empty values
+                if getattr(env_settings.quotex, "email", ""):
+                    settings.quotex.email = env_settings.quotex.email  # type: ignore[attr-defined]
+                if getattr(env_settings.quotex, "password", ""):
+                    settings.quotex.password = env_settings.quotex.password  # type: ignore[attr-defined]
+                # Auto-login may be toggled via env
+                if hasattr(env_settings, "auto_login"):
+                    settings.auto_login = bool(env_settings.auto_login)
+            except Exception:
+                pass
+            return settings
+        except Exception as e:
+            logger.warning(f"Failed to load runtime settings JSON: {e}; rebuilding defaults")
+    return _build_defaults()
 
-    config_path = Path(config_path)
-
-    if not config_path.exists():
-        logger.warning(f"Config file {config_path} not found, creating default")
-        create_default_config(config_path)
-
+def save_runtime_settings(settings: NexusSettings, path: Optional[Union[str, Path]] = None) -> bool:
+    """Persist current settings to JSON (excluding sensitive override by env)."""
+    p = Path(path) if path else RUNTIME_SETTINGS_PATH
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config_data = yaml.safe_load(f)
+        data = settings.model_dump()
+        # Do not persist environment overrides explicitly if they were blank originally
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Runtime settings saved to {p}")
+        return True
+    except Exception as e:  # pragma: no cover
+        logger.error(f"Failed to save runtime settings: {e}")
+        return False
 
-        _ = OmegaConf.create(config_data)
-        settings = NexusSettings(**config_data)
-
-        # Only allow overriding email/password from environment
-        env_email = os.getenv("QUOTEX__EMAIL")
-        env_password = os.getenv("QUOTEX__PASSWORD")
-        if env_email:
-            settings.quotex.email = str(env_email)  # type: ignore[assignment]
-        if env_password:
-            settings.quotex.password = str(env_password)  # type: ignore[assignment]
-
-        logger.info(f"Configuration loaded from {config_path}")
-        return settings
-
+def update_settings(mutator) -> NexusSettings:
+    """Apply mutator(settings) -> None then save; returns updated settings."""
+    settings = load_runtime_settings()
+    try:
+        mutator(settings)
     except Exception as e:
-        logger.error(f"Error loading config: {e}")
-        logger.info("Using default configuration")
-        return create_default_config()
+        logger.error(f"Mutator failed: {e}")
+    save_runtime_settings(settings)
+    return settings
 
+# --- Backward compatible wrappers ---
 
-def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:
-    """Create default config and optionally save to disk."""
-    default_config = NexusSettings(
-        quotex=QuotexSettings(
-            email="demo@example.com",
-            password="demo123",
-            demo_mode=True,
-            lang="en"
-        ),
-        trading=TradingSettings(),
-        ai=AISettings(),
-        auto_login=False,
-    )
+def load_config(config_path: Optional[Union[str, Path]] = None) -> NexusSettings:  # noqa: D401
+    return load_runtime_settings(config_path)
 
+def create_default_config(save_path: Optional[Path] = None) -> NexusSettings:  # noqa: D401
+    settings = _build_defaults()
     if save_path:
-        config_dict = default_config.model_dump()
-        with open(save_path, 'w', encoding='utf-8') as f:
-            yaml.dump(config_dict, f, default_flow_style=False, indent=2)
-        logger.info(f"Default configuration saved to {save_path}")
+        save_runtime_settings(settings, save_path)
+    return settings
 
-    return default_config
-
-
-def validate_config(config: NexusSettings) -> bool:
-    """Basic validation for settings integrity."""
+def validate_config(config: NexusSettings) -> bool:  # unchanged logic but relaxed for blank creds in demo
     try:
-        if not config.quotex.email or not config.quotex.password:
-            logger.error("Quotex email and password are required")
-            return False
+        # Credentials can be blank in pure simulation
         if config.trading.max_risk_per_trade_percent <= 0 or config.trading.max_risk_per_trade_percent > 100:
             logger.error("Risk per trade percentage must be between 0 and 100")
             return False
@@ -208,8 +252,20 @@ def validate_config(config: NexusSettings) -> bool:
         if config.ai.num_workers <= 0:
             logger.error("Number of workers must be positive")
             return False
-        logger.info("Configuration validation passed")
         return True
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         return False
+
+__all__ = [
+    "NexusSettings",
+    "QuotexSettings",
+    "TradingSettings",
+    "ExplorationSettings",
+    "load_runtime_settings",
+    "save_runtime_settings",
+    "update_settings",
+    "load_config",
+    "create_default_config",
+    "validate_config",
+]
