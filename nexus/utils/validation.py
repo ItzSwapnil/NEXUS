@@ -5,9 +5,9 @@ Provides comprehensive validation for trading parameters, asset symbols,
 amounts, timeframes, and other critical inputs to ensure system integrity.
 """
 
-from typing import Any, Optional, List, Tuple
 import re
 from decimal import Decimal, InvalidOperation
+from typing import Any, List, Optional, Tuple
 
 from nexus.utils.logger import get_nexus_logger
 
@@ -16,6 +16,7 @@ logger = get_nexus_logger("nexus.utils.validation")
 
 class ValidationError(ValueError):
     """Custom exception for validation errors."""
+
     pass
 
 
@@ -42,13 +43,15 @@ def validate_asset_symbol(symbol: str) -> str:
         raise ValidationError(f"Asset symbol length invalid: {normalized}")
 
     # Allow alphanumeric, spaces, and common separators
-    if not re.match(r'^[A-Z0-9\s&\-/]+$', normalized):
+    if not re.match(r"^[A-Z0-9\s&\-/]+$", normalized):
         raise ValidationError(f"Asset symbol contains invalid characters: {normalized}")
 
     return normalized
 
 
-def validate_trade_amount(amount: float, min_amount: float = 1.0, max_amount: float = 10000.0) -> float:
+def validate_trade_amount(
+    amount: float, min_amount: float = 1.0, max_amount: float = 10000.0
+) -> float:
     """
     Validate trade amount is within acceptable range.
 
@@ -65,8 +68,8 @@ def validate_trade_amount(amount: float, min_amount: float = 1.0, max_amount: fl
     """
     try:
         amount_decimal = Decimal(str(amount))
-    except (InvalidOperation, ValueError, TypeError):
-        raise ValidationError(f"Invalid amount format: {amount}")
+    except (InvalidOperation, ValueError, TypeError) as err:
+        raise ValidationError(f"Invalid amount format: {amount}") from err
 
     if amount_decimal <= 0:
         raise ValidationError(f"Amount must be positive: {amount}")
@@ -99,13 +102,13 @@ def validate_direction(direction: str) -> str:
     normalized = direction.strip().lower()
 
     # Map various common terms to call/put
-    call_synonyms = {'call', 'buy', 'up', 'long', 'higher', 'green'}
-    put_synonyms = {'put', 'sell', 'down', 'short', 'lower', 'red'}
+    call_synonyms = {"call", "buy", "up", "long", "higher", "green"}
+    put_synonyms = {"put", "sell", "down", "short", "lower", "red"}
 
     if normalized in call_synonyms:
-        return 'call'
+        return "call"
     elif normalized in put_synonyms:
-        return 'put'
+        return "put"
     else:
         raise ValidationError(f"Invalid direction: {direction}. Use 'call' or 'put'")
 
@@ -127,8 +130,8 @@ def validate_expiration(expiration: Any, min_seconds: int = 60, max_seconds: int
     """
     try:
         exp_int = int(expiration)
-    except (ValueError, TypeError):
-        raise ValidationError(f"Expiration must be an integer: {expiration}")
+    except (ValueError, TypeError) as err:
+        raise ValidationError(f"Expiration must be an integer: {expiration}") from err
 
     if exp_int < min_seconds:
         raise ValidationError(f"Expiration {exp_int}s below minimum {min_seconds}s")
@@ -158,8 +161,8 @@ def validate_timeframe(timeframe: Any, allowed_timeframes: Optional[List[int]] =
 
     try:
         tf_int = int(timeframe)
-    except (ValueError, TypeError):
-        raise ValidationError(f"Timeframe must be an integer: {timeframe}")
+    except (ValueError, TypeError) as err:
+        raise ValidationError(f"Timeframe must be an integer: {timeframe}") from err
 
     if tf_int <= 0:
         raise ValidationError(f"Timeframe must be positive: {timeframe}")
@@ -187,8 +190,8 @@ def validate_payout(payout: float, min_payout: float = 0.0, max_payout: float = 
     """
     try:
         payout_float = float(payout)
-    except (ValueError, TypeError):
-        raise ValidationError(f"Payout must be a number: {payout}")
+    except (ValueError, TypeError) as err:
+        raise ValidationError(f"Payout must be a number: {payout}") from err
 
     if payout_float < min_payout:
         raise ValidationError(f"Payout {payout_float} below minimum {min_payout}")
@@ -214,8 +217,8 @@ def validate_win_rate(win_rate: float) -> float:
     """
     try:
         wr_float = float(win_rate)
-    except (ValueError, TypeError):
-        raise ValidationError(f"Win rate must be a number: {win_rate}")
+    except (ValueError, TypeError) as err:
+        raise ValidationError(f"Win rate must be a number: {win_rate}") from err
 
     if not (0.0 <= wr_float <= 1.0):
         raise ValidationError(f"Win rate must be between 0 and 1: {win_rate}")
@@ -238,8 +241,8 @@ def validate_confidence(confidence: float) -> float:
     """
     try:
         conf_float = float(confidence)
-    except (ValueError, TypeError):
-        raise ValidationError(f"Confidence must be a number: {confidence}")
+    except (ValueError, TypeError) as err:
+        raise ValidationError(f"Confidence must be a number: {confidence}") from err
 
     if not (0.0 <= conf_float <= 1.0):
         raise ValidationError(f"Confidence must be between 0 and 1: {confidence}")
@@ -270,8 +273,8 @@ def validate_weights(weights: dict) -> dict:
     for key, value in weights.items():
         try:
             weight = float(value)
-        except (ValueError, TypeError):
-            raise ValidationError(f"Weight for {key} must be numeric: {value}")
+        except (ValueError, TypeError) as err:
+            raise ValidationError(f"Weight for {key} must be numeric: {value}") from err
 
         if weight < 0:
             raise ValidationError(f"Weight for {key} cannot be negative: {weight}")
@@ -292,7 +295,7 @@ def validate_trade_params(
     amount: float,
     expiration: Any,
     min_amount: float = 1.0,
-    max_amount: float = 10000.0
+    max_amount: float = 10000.0,
 ) -> Tuple[str, str, float, int]:
     """
     Validate all trade parameters at once.
@@ -320,16 +323,15 @@ def validate_trade_params(
 
 
 __all__ = [
-    'ValidationError',
-    'validate_asset_symbol',
-    'validate_trade_amount',
-    'validate_direction',
-    'validate_expiration',
-    'validate_timeframe',
-    'validate_payout',
-    'validate_win_rate',
-    'validate_confidence',
-    'validate_weights',
-    'validate_trade_params',
+    "ValidationError",
+    "validate_asset_symbol",
+    "validate_trade_amount",
+    "validate_direction",
+    "validate_expiration",
+    "validate_timeframe",
+    "validate_payout",
+    "validate_win_rate",
+    "validate_confidence",
+    "validate_weights",
+    "validate_trade_params",
 ]
-

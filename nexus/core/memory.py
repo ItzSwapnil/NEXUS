@@ -10,37 +10,41 @@ This module implements a sophisticated vector database system for:
 - Real-time pattern matching and adaptation
 """
 
-import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
-from typing import Dict, List, Any, Optional, Union, Set
-from datetime import datetime
-from pathlib import Path
 import asyncio
 import json
 import time
 import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Union
+
+import chromadb
 
 # Vector databases
 import faiss
-import chromadb
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+
 try:
     import lancedb
+
     LANCE_AVAILABLE = True
 except ImportError:
     LANCE_AVAILABLE = False
 
 
 # Embeddings and preprocessing
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
-from nexus.utils.logger import get_nexus_logger, PerformanceLogger
+from nexus.utils.logger import PerformanceLogger, get_nexus_logger
 
 # Set up loggers
 logger = get_nexus_logger("nexus.core.memory")
 perf_logger = PerformanceLogger("vector_memory")
+
 
 class PatternEncoder(nn.Module):
     """Neural encoder for converting market patterns to embeddings."""
@@ -62,7 +66,7 @@ class PatternEncoder(nn.Module):
             nn.LeakyReLU(),
             nn.Dropout(0.1),
             nn.Linear(256, embedding_dim),
-            nn.LayerNorm(embedding_dim)
+            nn.LayerNorm(embedding_dim),
         )
 
         # Initialize weights
@@ -82,7 +86,8 @@ class PatternEncoder(nn.Module):
         Returns:
             Embedding tensor of shape [batch_size, embedding_dim]
         """
-        return self.encoder(x)
+        return self.encoder(x)  # type: ignore[no-any-return]
+
 
 class PatternSimilarity:
     """Pattern similarity calculator with various metrics."""
@@ -115,16 +120,16 @@ class PatternSimilarity:
             if norm_x == 0 or norm_y == 0:
                 return 0.0
 
-            return np.dot(x, y) / (norm_x * norm_y)
+            return float(np.dot(x, y) / (norm_x * norm_y))  # type: ignore[no-any-return]
 
         elif self.metric == "euclidean":
             # Euclidean distance (converted to similarity)
             dist = np.linalg.norm(x - y)
-            return 1.0 / (1.0 + dist)
+            return float(1.0 / (1.0 + float(dist)))
 
         elif self.metric == "dot":
             # Dot product
-            return np.dot(x, y)
+            return float(np.dot(x, y))  # type: ignore[no-any-return]
 
         else:
             raise ValueError(f"Unknown similarity metric: {self.metric}")
@@ -148,29 +153,32 @@ class PatternSimilarity:
             # Avoid division by zero
             norm_queries = np.where(norm_queries == 0, 1e-10, norm_queries)
 
-            return np.dot(queries, x) / (norm_queries * norm_x)
+            return np.dot(queries, x) / (norm_queries * norm_x)  # type: ignore[no-any-return]
 
         elif self.metric == "euclidean":
             # Batch Euclidean distance (converted to similarity)
             dists = np.linalg.norm(queries - x, axis=1)
-            return 1.0 / (1.0 + dists)
+            return 1.0 / (1.0 + dists)  # type: ignore[no-any-return]
 
         elif self.metric == "dot":
             # Batch dot product
-            return np.dot(queries, x)
+            return np.dot(queries, x)  # type: ignore[no-any-return]
 
         else:
             raise ValueError(f"Unknown similarity metric: {self.metric}")
 
+
 class MarketPattern:
     """Market pattern container with metadata."""
 
-    def __init__(self,
-                 data: np.ndarray,
-                 embedding: np.ndarray,
-                 pattern_id: Optional[str] = None,
-                 timestamp: Optional[datetime] = None,
-                 metadata: Optional[Dict[str, Any]] = None):
+    def __init__(
+        self,
+        data: np.ndarray,
+        embedding: np.ndarray,
+        pattern_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize market pattern.
 
@@ -187,8 +195,8 @@ class MarketPattern:
         self.timestamp = timestamp or datetime.now()
         self.metadata = metadata or {}
         self.access_count = 0
-        self.last_accessed = None
-        self.similarity_scores = {}  # Cache for similarity scores
+        self.last_accessed: Optional[datetime] = None
+        self.similarity_scores: Dict[str, float] = {}  # Cache for similarity scores
 
     def access(self) -> None:
         """Record pattern access."""
@@ -208,11 +216,13 @@ class MarketPattern:
             "embedding": self.embedding.tolist(),
             "metadata": self.metadata,
             "access_count": self.access_count,
-            "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None
+            "last_accessed": self.last_accessed.isoformat() if self.last_accessed else None,
         }
 
     @classmethod
-    def from_dict(cls, data_dict: Dict[str, Any], raw_data: Optional[np.ndarray] = None) -> 'MarketPattern':
+    def from_dict(
+        cls, data_dict: Dict[str, Any], raw_data: Optional[np.ndarray] = None
+    ) -> "MarketPattern":
         """
         Create pattern from dictionary.
 
@@ -228,7 +238,7 @@ class MarketPattern:
             embedding=np.array(data_dict["embedding"]),
             pattern_id=data_dict["pattern_id"],
             timestamp=datetime.fromisoformat(data_dict["timestamp"]),
-            metadata=data_dict["metadata"]
+            metadata=data_dict["metadata"],
         )
 
         pattern.access_count = data_dict.get("access_count", 0)
@@ -237,11 +247,18 @@ class MarketPattern:
 
         return pattern
 
+
 class VectorMemory:
     """
     Advanced vector memory system for market patterns.
     """
-    def __init__(self, capacity: int = 100000, dimension: int = 128, config: Dict[str, Any] = None):
+
+    def __init__(
+        self,
+        capacity: int = 100000,
+        dimension: int = 128,
+        config: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize vector memory system.
 
@@ -252,7 +269,7 @@ class VectorMemory:
         """
         # Support both direct arguments and config dict/object
         if config is not None:
-            if hasattr(config, 'get') and callable(config.get):
+            if hasattr(config, "get") and callable(config.get):
                 self.embedding_dim = config.get("embedding_dim", dimension)
                 self.max_patterns = config.get("max_patterns", capacity)
                 self.similarity_threshold = config.get("similarity_threshold", 0.85)
@@ -290,13 +307,15 @@ class VectorMemory:
             "avg_query_time_ms": 0,
             "last_maintenance": datetime.now(),
             "index_size_bytes": 0,
-            "embedding_dimension": self.embedding_dim
+            "embedding_dimension": self.embedding_dim,
         }
 
         # Initialize components
         self._initialize_components()
 
-        logger.info(f"Vector memory initialized with {self.embedding_dim}-dimensional embeddings using {self.db_type} backend")
+        logger.info(
+            f"Vector memory initialized with {self.embedding_dim}-dimensional embeddings using {self.db_type} backend"
+        )
 
     def _initialize_components(self) -> None:
         """Initialize memory components."""
@@ -309,7 +328,9 @@ class VectorMemory:
             elif self.db_type == "lance" and LANCE_AVAILABLE:
                 self._init_lance()
             else:
-                logger.warning(f"Unknown or unavailable DB type: {self.db_type}, falling back to FAISS")
+                logger.warning(
+                    f"Unknown or unavailable DB type: {self.db_type}, falling back to FAISS"
+                )
                 self.db_type = "faiss"
                 self._init_faiss()
 
@@ -329,12 +350,14 @@ class VectorMemory:
                 # Use compressed index for large collections
                 self.vector_index = faiss.IndexIVFPQ(
                     faiss.IndexFlatL2(self.embedding_dim),  # Base index
-                    self.embedding_dim,                     # Dimension
-                    min(4096, self.max_patterns // 10),     # Number of centroids
-                    8,                                      # Number of sub-quantizers
-                    8                                       # Bits per sub-quantizer
+                    self.embedding_dim,  # Dimension
+                    min(4096, self.max_patterns // 10),  # Number of centroids
+                    8,  # Number of sub-quantizers
+                    8,  # Bits per sub-quantizer
                 )
-                self.vector_index.train(np.zeros((100, self.embedding_dim), dtype=np.float32))
+                getattr(self.vector_index, "train")(  # noqa: B009
+                    np.zeros((100, self.embedding_dim), dtype=np.float32)
+                )
             else:
                 # Use flat index for exact search
                 self.vector_index = faiss.IndexFlatL2(self.embedding_dim)
@@ -355,7 +378,7 @@ class VectorMemory:
             self.chroma_collection = self.chroma_client.get_or_create_collection(
                 name="nexus_patterns",
                 embedding_function=None,  # We provide our own embeddings
-                metadata={"dimension": self.embedding_dim}
+                metadata={"dimension": self.embedding_dim},
             )
 
             logger.info("ChromaDB collection initialized")
@@ -377,12 +400,15 @@ class VectorMemory:
             else:
                 # Create schema for the table
                 import pyarrow as pa
-                schema = pa.schema([
-                    pa.field("id", pa.string()),
-                    pa.field("vector", pa.list_(pa.float32(), self.embedding_dim)),
-                    pa.field("timestamp", pa.string()),
-                    pa.field("metadata", pa.string())
-                ])
+
+                schema = pa.schema(
+                    [
+                        pa.field("id", pa.string()),
+                        pa.field("vector", pa.list_(pa.float32(), self.embedding_dim)),
+                        pa.field("timestamp", pa.string()),
+                        pa.field("metadata", pa.string()),
+                    ]
+                )
 
                 # Create empty table with the schema
                 self.lance_table = self.lance_db.create_table("nexus_patterns", schema=schema)
@@ -406,8 +432,7 @@ class VectorMemory:
         try:
             # Save patterns metadata
             patterns_data = {
-                pattern_id: pattern.to_dict()
-                for pattern_id, pattern in self.patterns.items()
+                pattern_id: pattern.to_dict() for pattern_id, pattern in self.patterns.items()
             }
 
             with open(self.storage_path / "patterns_metadata.json", "w") as f:
@@ -415,7 +440,9 @@ class VectorMemory:
 
             # Save raw pattern data
             raw_data = {
-                pattern_id: pattern.data.tolist() if isinstance(pattern.data, np.ndarray) else pattern.data
+                pattern_id: pattern.data.tolist()
+                if isinstance(pattern.data, np.ndarray)
+                else pattern.data
                 for pattern_id, pattern in self.patterns.items()
             }
 
@@ -494,17 +521,21 @@ class VectorMemory:
                 self.chroma_collection.add(
                     ids=[pattern.pattern_id],
                     embeddings=[pattern.embedding.tolist()],
-                    metadatas=[pattern.metadata]
+                    metadatas=[pattern.metadata],
                 )
 
             elif self.db_type == "lance" and LANCE_AVAILABLE:
                 # Add vector to LanceDB
-                self.lance_table.add([{
-                    "id": pattern.pattern_id,
-                    "vector": pattern.embedding.tolist(),
-                    "timestamp": pattern.timestamp.isoformat(),
-                    "metadata": json.dumps(pattern.metadata)
-                }])
+                self.lance_table.add(
+                    [
+                        {
+                            "id": pattern.pattern_id,
+                            "vector": pattern.embedding.tolist(),
+                            "timestamp": pattern.timestamp.isoformat(),
+                            "metadata": json.dumps(pattern.metadata),
+                        }
+                    ]
+                )
 
             # Update metadata index for filtering
             for key, value in pattern.metadata.items():
@@ -519,10 +550,12 @@ class VectorMemory:
         except Exception as e:
             logger.error(f"Error updating vector index: {e}")
 
-    def add_pattern(self,
-                    data: Union[np.ndarray, pd.DataFrame],
-                    embedding: Optional[np.ndarray] = None,
-                    metadata: Optional[Dict[str, Any]] = None) -> str:
+    def add_pattern(
+        self,
+        data: Union[np.ndarray, pd.DataFrame],
+        embedding: Optional[np.ndarray] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Add pattern to memory.
 
@@ -549,15 +582,11 @@ class VectorMemory:
                     metadata = {
                         "timestamp": datetime.now().isoformat(),
                         "data_shape": data.shape if hasattr(data, "shape") else None,
-                        "norm": float(np.linalg.norm(embedding))
+                        "norm": float(np.linalg.norm(embedding)),
                     }
 
                 # Create pattern
-                pattern = MarketPattern(
-                    data=data,
-                    embedding=embedding,
-                    metadata=metadata
-                )
+                pattern = MarketPattern(data=data, embedding=embedding, metadata=metadata)
 
                 # Add to storage
                 self.patterns[pattern.pattern_id] = pattern
@@ -602,7 +631,7 @@ class VectorMemory:
                 flat_data = data.flatten() if data.ndim > 1 else data
 
                 # Apply PCA if data dimension is larger than embedding dimension
-                if not hasattr(self, 'pca'):
+                if not hasattr(self, "pca"):
                     self.pca = PCA(n_components=self.embedding_dim)
                     self.pca.fit(flat_data.reshape(1, -1))
 
@@ -611,28 +640,30 @@ class VectorMemory:
                 # Normalize
                 embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
 
-                return embedding
+                return embedding  # type: ignore[no-any-return]
             else:
                 # Pad if needed
                 if data.size < self.embedding_dim:
                     embedding = np.zeros(self.embedding_dim)
-                    embedding[:data.size] = data.flatten()
+                    embedding[: data.size] = data.flatten()
                 else:
-                    embedding = data.flatten()[:self.embedding_dim]
+                    embedding = data.flatten()[: self.embedding_dim]
 
                 # Normalize
                 embedding = embedding / (np.linalg.norm(embedding) + 1e-8)
 
-                return embedding
+                return embedding  # type: ignore[no-any-return]
 
         except Exception as e:
             logger.error(f"Error encoding pattern: {e}")
             return np.zeros(self.embedding_dim)
 
-    def search_similar_patterns(self,
-                               query: Union[np.ndarray, str],
-                               k: int = 5,
-                               metadata_filter: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    def search_similar_patterns(
+        self,
+        query: Union[np.ndarray, str],
+        k: int = 5,
+        metadata_filter: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Search for similar patterns.
 
@@ -672,8 +703,7 @@ class VectorMemory:
                 if self.db_type == "faiss" and self.vector_index is not None:
                     # Search in FAISS
                     distances, indices = self.vector_index.search(
-                        np.array([query_embedding], dtype=np.float32),
-                        min(k, len(self.patterns))
+                        np.array([query_embedding], dtype=np.float32), min(k, len(self.patterns))
                     )
 
                     # Map indices back to patterns
@@ -694,19 +724,21 @@ class VectorMemory:
                         # Convert distance to similarity
                         similarity = 1.0 / (1.0 + distances[0][i])
 
-                        results.append({
-                            "pattern_id": pattern_id,
-                            "similarity": float(similarity),
-                            "metadata": pattern.metadata,
-                            "timestamp": pattern.timestamp.isoformat()
-                        })
+                        results.append(
+                            {
+                                "pattern_id": pattern_id,
+                                "similarity": float(similarity),
+                                "metadata": pattern.metadata,
+                                "timestamp": pattern.timestamp.isoformat(),
+                            }
+                        )
 
                 elif self.db_type == "chroma":
                     # Search in ChromaDB
                     search_results = self.chroma_collection.query(
                         query_embeddings=[query_embedding.tolist()],
                         n_results=k,
-                        where=metadata_filter
+                        where=metadata_filter,
                     )
 
                     results = []
@@ -717,12 +749,14 @@ class VectorMemory:
 
                         similarity = float(search_results["distances"][0][i])
 
-                        results.append({
-                            "pattern_id": pattern_id,
-                            "similarity": similarity,
-                            "metadata": pattern.metadata,
-                            "timestamp": pattern.timestamp.isoformat()
-                        })
+                        results.append(
+                            {
+                                "pattern_id": pattern_id,
+                                "similarity": similarity,
+                                "metadata": pattern.metadata,
+                                "timestamp": pattern.timestamp.isoformat(),
+                            }
+                        )
 
                 elif self.db_type == "lance" and LANCE_AVAILABLE:
                     # Search in LanceDB
@@ -730,7 +764,9 @@ class VectorMemory:
                     if metadata_filter:
                         # Apply filters
                         for key, value in metadata_filter.items():
-                            search_results = search_results.where(f"json_extract(metadata, '$.{key}') = '{value}'")
+                            search_results = search_results.where(
+                                f"json_extract(metadata, '$.{key}') = '{value}'"
+                            )
 
                     # Get results
                     results_df = search_results.to_pandas()
@@ -744,12 +780,14 @@ class VectorMemory:
 
                         similarity = float(row["_distance"])
 
-                        results.append({
-                            "pattern_id": pattern_id,
-                            "similarity": similarity,
-                            "metadata": pattern.metadata,
-                            "timestamp": pattern.timestamp.isoformat()
-                        })
+                        results.append(
+                            {
+                                "pattern_id": pattern_id,
+                                "similarity": similarity,
+                                "metadata": pattern.metadata,
+                                "timestamp": pattern.timestamp.isoformat(),
+                            }
+                        )
 
                 else:
                     # Fallback: brute force search
@@ -759,9 +797,9 @@ class VectorMemory:
                 query_time = (time.time() - start_time) * 1000  # ms
                 self.stats["queries_processed"] += 1
                 self.stats["avg_query_time_ms"] = (
-                    (self.stats["avg_query_time_ms"] * (self.stats["queries_processed"] - 1) + query_time) /
-                    self.stats["queries_processed"]
-                )
+                    self.stats["avg_query_time_ms"] * (self.stats["queries_processed"] - 1)
+                    + query_time
+                ) / self.stats["queries_processed"]
 
                 return results
 
@@ -769,7 +807,9 @@ class VectorMemory:
                 logger.error(f"Error searching similar patterns: {e}")
                 return []
 
-    def _brute_force_search(self, query_embedding: np.ndarray, k: int, candidate_ids: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
+    def _brute_force_search(
+        self, query_embedding: np.ndarray, k: int, candidate_ids: Optional[Set[str]] = None
+    ) -> List[Dict[str, Any]]:
         """
         Perform brute force similarity search.
 
@@ -783,7 +823,9 @@ class VectorMemory:
         """
         patterns_to_search = self.patterns
         if candidate_ids:
-            patterns_to_search = {pid: self.patterns[pid] for pid in candidate_ids if pid in self.patterns}
+            patterns_to_search = {
+                pid: self.patterns[pid] for pid in candidate_ids if pid in self.patterns
+            }
 
         if not patterns_to_search:
             return []
@@ -801,12 +843,14 @@ class VectorMemory:
         results = []
         for pattern_id, similarity in similarities[:k]:
             pattern = self.patterns[pattern_id]
-            results.append({
-                "pattern_id": pattern_id,
-                "similarity": float(similarity),
-                "metadata": pattern.metadata,
-                "timestamp": pattern.timestamp.isoformat()
-            })
+            results.append(
+                {
+                    "pattern_id": pattern_id,
+                    "similarity": float(similarity),
+                    "metadata": pattern.metadata,
+                    "timestamp": pattern.timestamp.isoformat(),
+                }
+            )
 
         return results
 
@@ -840,7 +884,7 @@ class VectorMemory:
         for s in result_sets[1:]:
             result &= s
 
-        return result
+        return result  # type: ignore[no-any-return]
 
     def get_pattern(self, pattern_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -865,7 +909,7 @@ class VectorMemory:
             "metadata": pattern.metadata,
             "timestamp": pattern.timestamp.isoformat(),
             "access_count": pattern.access_count,
-            "last_accessed": pattern.last_accessed.isoformat() if pattern.last_accessed else None
+            "last_accessed": pattern.last_accessed.isoformat() if pattern.last_accessed else None,
         }
 
     def delete_pattern(self, pattern_id: str) -> bool:
@@ -929,11 +973,18 @@ class VectorMemory:
         # Sort patterns by utility (access count and recency)
         sorted_patterns = sorted(
             self.patterns.items(),
-            key=lambda x: x[1].access_count + (0 if x[1].last_accessed is None else (datetime.now() - x[1].last_accessed).total_seconds()),
+            key=lambda x: (
+                x[1].access_count
+                + (
+                    0
+                    if x[1].last_accessed is None
+                    else (datetime.now() - x[1].last_accessed).total_seconds()
+                )
+            ),
         )
 
         # Keep only the most useful patterns
-        patterns_to_remove = sorted_patterns[:len(self.patterns) - self.max_patterns]
+        patterns_to_remove = sorted_patterns[: len(self.patterns) - self.max_patterns]
 
         for pattern_id, _ in patterns_to_remove:
             self.delete_pattern(pattern_id)

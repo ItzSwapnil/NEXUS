@@ -3,6 +3,7 @@ This module previously exposed a FastAPI app. All web server functionality has
 been removed per project requirements. Keep this module as a lightweight stub
 for backwards compatibility. No external web framework is used here.
 """
+
 from __future__ import annotations
 
 from typing import Dict
@@ -37,4 +38,6 @@ def metrics() -> Dict[str, int | float]:
 
 if __name__ == "__main__":
     # No server to run; print guidance instead.
-    rprint("[bold yellow]NEXUS web API has been removed. Use internal Python APIs instead.[/bold yellow]")
+    rprint(
+        "[bold yellow]NEXUS web API has been removed. Use internal Python APIs instead.[/bold yellow]"
+    )

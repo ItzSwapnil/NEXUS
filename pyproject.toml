@@ -26,13 +26,19 @@ classifiers = [
 
 # Core dependencies - minimal set required for basic functionality
 dependencies = [
-    "numpy>=1.24.0,<2.0.0",
+    "numpy>=2.0.0,<3.0.0",
     "pandas>=2.0.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "pyquotex",
     "python-dotenv>=1.0.0",
     "rich>=13.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "orjson>=3.10.0",
+    "ta-lib>=0.6.0",
+    "pandas-ta-classic>=0.6.0",
+    "stock-indicators>=1.3.0",
 ]
 
 [project.optional-dependencies]
@@ -47,10 +53,13 @@ ta = [
     "scipy>=1.10.0",
 ]
 
-# AI/ML dependencies (Note: PyTorch not yet available for Python 3.14)
-# For Python 3.14, install nightly builds or wait for official release
+# Broad indicator providers are enabled in the runtime. Stock Indicators also
+# requires a system .NET runtime; NEXUS reports it as unavailable when .NET
+# is absent instead of breaking live analysis.
+
+# AI/ML dependencies. Install the `ai` extra for model inference/training.
 ai = [
-    # "torch>=2.0.0",  # Not available for Python 3.14 yet - use nightly or downgrade Python
+    "torch>=2.0.0",
     "scikit-learn>=1.3.0",
     "joblib>=1.3.0",
 ]
@@ -95,7 +104,10 @@ nexus-cli = "nexus.cli:main"
 nexus-train = "nexus.ai.train_models:main"
 
 [tool.setuptools]
-packages = ["nexus"]
+# Include all nested runtime packages in wheels/sdists. Listing only the
+# top-level package silently drops adapters, strategies, tests' dependencies,
+# and other submodules from installed distributions.
+packages = {find = {include = ["nexus*"]}}
 
 [tool.setuptools.package-data]
 nexus = ["py.typed"]
@@ -135,6 +147,8 @@ extend-exclude = '''
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "W",  # pycodestyle warnings
@@ -144,13 +158,14 @@ select = [
     "B",  # flake8-bugbear
 ]
 ignore = [
-    "E501",  # line too long (handled by black)
-    "B008",  # do not perform function calls in argument defaults
+    "E501",  # line too long
+    "B008",  # function calls in default args
     "C901",  # too complex
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
 
 [tool.mypy]
 python_version = "3.14"
@@ -161,4 +176,3 @@ ignore_missing_imports = true
 
 [tool.uv.sources]
 pyquotex = { git = "https://github.com/cleitonleonel/pyquotex.git" }
-

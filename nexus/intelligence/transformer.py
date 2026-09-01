@@ -5,6 +5,7 @@ try:
     import torch  # type: ignore
     import torch.nn as nn  # type: ignore
     import torch.optim as optim  # type: ignore
+
     _HAS_TORCH = True
 except ImportError:  # pragma: no cover - environment without torch
     torch = None  # type: ignore
@@ -12,12 +13,13 @@ except ImportError:  # pragma: no cover - environment without torch
     optim = object  # type: ignore
     _HAS_TORCH = False
 
-import numpy as np
-import pandas as pd
-from typing import Dict, Optional, Tuple, Any
+import builtins
 import math
 from pathlib import Path
-import builtins
+from typing import Any, Dict, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 from nexus.utils.logger import get_nexus_logger
 from nexus.utils.technical import calculate_features
@@ -25,6 +27,7 @@ from nexus.utils.technical import calculate_features
 logger = get_nexus_logger("nexus.intelligence.transformer")
 
 if _HAS_TORCH:
+
     class PositionalEncoding(nn.Module):
         """
         Positional encoding for temporal awareness in transformer model.
@@ -46,16 +49,18 @@ if _HAS_TORCH:
             # Create positional encoding matrix
             pe = torch.zeros(max_seq_length, d_model)
             position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
-            div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+            div_term = torch.exp(
+                torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+            )
 
             pe[:, 0::2] = torch.sin(position * div_term)
             pe[:, 1::2] = torch.cos(position * div_term)
             pe = pe.unsqueeze(0)
 
             # Register positional encoding as a buffer (not a parameter)
-            self.register_buffer('pe', pe)
+            self.register_buffer("pe", pe)
 
-        def forward(self, x: 'torch.Tensor') -> 'torch.Tensor':  # type: ignore
+        def forward(self, x: "torch.Tensor") -> "torch.Tensor":  # type: ignore
             """
             Apply positional encoding.
 
@@ -65,8 +70,8 @@ if _HAS_TORCH:
             Returns:
                 torch.Tensor: Positionally encoded tensor
             """
-            x = x + self.pe[:, :x.size(1)]
-            return self.dropout(x)
+            x = x + self.pe[:, : x.size(1)]  # type: ignore[index,operator]
+            return self.dropout(x)  # type: ignore[no-any-return]
 
     class FinancialTransformerEncoder(nn.Module):
         """
@@ -77,10 +82,9 @@ if _HAS_TORCH:
             self,
             d_model: int = 64,
             nhead: int = 4,
-            num_encoder_layers: int = 4,
             dim_feedforward: int = 256,
             dropout: float = 0.1,
-            activation: str = "gelu"
+            num_layers: int = 3,
         ):
             """
             Initialize the financial transformer encoder.
@@ -88,40 +92,39 @@ if _HAS_TORCH:
             Args:
                 d_model: Feature dimension
                 nhead: Number of attention heads
-                num_encoder_layers: Number of encoder layers
                 dim_feedforward: Dimension of feedforward network
                 dropout: Dropout probability
-                activation: Activation function
+                num_layers: Number of encoder layers
             """
             super().__init__()
+            self.d_model = d_model
 
-            # Positional encoding for temporal awareness
+            # Input projection
             self.pos_encoder = PositionalEncoding(d_model, dropout=dropout)
 
-            # Transformer encoder
-            encoder_layers = nn.TransformerEncoderLayer(
+            # Transformer encoder layers
+            encoder_layer = nn.TransformerEncoderLayer(
                 d_model=d_model,
                 nhead=nhead,
                 dim_feedforward=dim_feedforward,
                 dropout=dropout,
-                activation=activation,
-                batch_first=True
-            )
-            self.transformer_encoder = nn.TransformerEncoder(
-                encoder_layers,
-                num_encoder_layers
+                batch_first=True,
             )
 
-        def forward(self, src: 'torch.Tensor', src_mask: Optional['torch.Tensor'] = None) -> 'torch.Tensor':  # type: ignore
+            self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
+        def forward(
+            self, src: torch.Tensor, src_mask: Optional[torch.Tensor] = None
+        ) -> torch.Tensor:
             """
-            Transform input sequence.
+            Forward pass.
 
             Args:
-                src: Input tensor [batch_size, seq_len, embedding_dim]
-                src_mask: Mask for input tensor
+                src: Input tensor of shape [batch_size, seq_len, d_model]
+                src_mask: Optional mask tensor
 
             Returns:
-                torch.Tensor: Transformed sequence
+                torch.Tensor: Output tensor
             """
             # Add positional encoding
             src = self.pos_encoder(src)
@@ -129,7 +132,7 @@ if _HAS_TORCH:
             # Pass through transformer encoder
             output = self.transformer_encoder(src, src_mask)
 
-            return output
+            return output  # type: ignore[no-any-return]
 
     class MarketTransformer(nn.Module):
         """
@@ -145,7 +148,7 @@ if _HAS_TORCH:
             dim_feedforward: int = 256,
             num_classes: int = 3,  # Buy, Sell, Hold
             dropout: float = 0.1,
-            seq_length: int = 60
+            seq_length: int = 60,
         ):
             """
             Initialize the market transformer.
@@ -173,9 +176,9 @@ if _HAS_TORCH:
             self.transformer = FinancialTransformerEncoder(
                 d_model=d_model,
                 nhead=nhead,
-                num_encoder_layers=num_encoder_layers,
+                num_layers=num_encoder_layers,
                 dim_feedforward=dim_feedforward,
-                dropout=dropout
+                dropout=dropout,
             )
 
             # Prediction heads
@@ -183,7 +186,7 @@ if _HAS_TORCH:
                 nn.Linear(d_model, d_model),
                 nn.GELU(),
                 nn.Dropout(dropout),
-                nn.Linear(d_model, num_classes)
+                nn.Linear(d_model, num_classes),
             )
 
             self.confidence_head = nn.Sequential(
@@ -191,10 +194,10 @@ if _HAS_TORCH:
                 nn.GELU(),
                 nn.Dropout(dropout),
                 nn.Linear(d_model, 1),
-                nn.Sigmoid()
+                nn.Sigmoid(),
             )
 
-        def forward(self, x: 'torch.Tensor') -> Tuple['torch.Tensor', 'torch.Tensor']:  # type: ignore
+        def forward(self, x: "torch.Tensor") -> Tuple["torch.Tensor", "torch.Tensor"]:  # type: ignore
             """
             Forward pass through the model.
 
@@ -219,6 +222,7 @@ if _HAS_TORCH:
 
             return logits, confidence
 
+
 class MarketPredictor:
     """
     Market prediction system that combines transformer model with preprocessing
@@ -230,44 +234,38 @@ class MarketPredictor:
         lookback_periods: int = 60,
         feature_dim: int = 20,
         batch_size: int = 32,
-        device: str = None
+        device: Optional[str] = None,
     ):
-        """
-        Initialize the market predictor.
-
-        Args:
-            lookback_periods: Number of candles to analyze
-            feature_dim: Number of features per candle
-            batch_size: Batch size for training/inference
-            device: Computing device ('cuda', 'cpu')
-        """
+        """Initialize the market predictor."""
         self.lookback_periods = lookback_periods
         self.feature_dim = feature_dim
         self.batch_size = batch_size
-        self.eval_history = []
+        self.eval_history: list[Any] = []
         self.model_path = Path("models/transformer/")
         self.model_path.mkdir(exist_ok=True, parents=True)
 
         if _HAS_TORCH:
             if device is None:
                 import torch as _torch  # local name
-                self.device = _torch.device('cuda' if _torch.cuda.is_available() else 'cpu')
+
+                self.device = _torch.device("cuda" if _torch.cuda.is_available() else "cpu")
             else:
                 import torch as _torch
+
                 self.device = _torch.device(device)
 
             # Initialize model
-            self.model = MarketTransformer(
-                input_dim=feature_dim,
-                seq_length=lookback_periods
-            ).to(self.device)  # type: ignore[attr-defined]
+            self.model = MarketTransformer(input_dim=feature_dim, seq_length=lookback_periods).to(
+                self.device
+            )  # type: ignore[attr-defined]
 
             # Optimizer and loss
             self.optimizer = optim.Adam(self.model.parameters(), lr=0.0001)  # type: ignore
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, mode='min', factor=0.5, patience=5
+                self.optimizer, mode="min", factor=0.5, patience=5
             )  # type: ignore
             import torch.nn as _nn
+
             self.criterion = _nn.CrossEntropyLoss()
 
             # Feature normalizers
@@ -275,11 +273,7 @@ class MarketPredictor:
             self.feature_stds = None
 
             # Class mapping
-            self.class_to_signal = {
-                0: "hold",
-                1: "call",
-                2: "put"
-            }
+            self.class_to_signal = {0: "hold", 1: "call", 2: "put"}
 
             # Try to load existing model
             self.load_model()
@@ -287,11 +281,11 @@ class MarketPredictor:
             logger.info(f"Market Transformer initialized on device: {self.device}")
         else:
             # Fallback attributes
-            self.device = 'cpu'
-            self.model = self._FallbackModel()
-            self.optimizer = None
-            self.scheduler = None
-            self.criterion = None
+            self.device = "cpu"  # type: ignore[assignment]
+            self.model = self._FallbackModel()  # type: ignore[assignment]
+            self.optimizer = None  # type: ignore[assignment]
+            self.scheduler = None  # type: ignore[assignment]
+            self.criterion = None  # type: ignore[assignment]
             self.feature_means = None
             self.feature_stds = None
             self.class_to_signal = {0: "hold", 1: "call", 2: "put"}
@@ -299,8 +293,10 @@ class MarketPredictor:
 
     class _FallbackModel:
         """Minimal callable to satisfy tests without torch."""
+
         def __call__(self, x):  # x is numpy array or placeholder
             import numpy as _np
+
             logits = _np.zeros((1, 3), dtype=_np.float32)
             confidence = _np.zeros((1, 1), dtype=_np.float32)
             return logits, confidence
@@ -320,11 +316,26 @@ class MarketPredictor:
 
         # Select relevant columns and handle NaN values
         selected_cols = [
-            'open', 'high', 'low', 'close', 'volume',
-            'rsi', 'macd', 'macd_signal', 'bb_upper', 'bb_lower',
-            'ema_short', 'ema_medium', 'ema_long', 'atr',
-            'trend_strength', 'volatility', 'momentum',
-            'mean_reversion', 'support', 'resistance'
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+            "rsi",
+            "macd",
+            "macd_signal",
+            "bb_upper",
+            "bb_lower",
+            "ema_short",
+            "ema_medium",
+            "ema_long",
+            "atr",
+            "trend_strength",
+            "volatility",
+            "momentum",
+            "mean_reversion",
+            "support",
+            "resistance",
         ]
 
         # Ensure all required columns exist
@@ -339,8 +350,9 @@ class MarketPredictor:
         if self.feature_means is None or self.feature_stds is None:
             # First-time setup
             self.feature_means = np.mean(features, axis=0)
-            self.feature_stds = np.std(features, axis=0)
-            self.feature_stds[self.feature_stds == 0] = 1.0  # Avoid division by zero
+            stds = np.std(features, axis=0)
+            stds[stds == 0] = 1.0  # Avoid division by zero
+            self.feature_stds = stds
 
         normalized_features = (features - self.feature_means) / self.feature_stds
 
@@ -353,18 +365,26 @@ class MarketPredictor:
             )
             # sliding_window_view result shape: [num_sequences, 1, lookback, feature_dim]
             # Squeeze the size-1 dimension
-            X_np = X_np.reshape(num_sequences, self.lookback_periods, normalized_features.shape[1]).astype(np.float32)
+            X_np = X_np.reshape(
+                num_sequences, self.lookback_periods, normalized_features.shape[1]
+            ).astype(np.float32)
             if _HAS_TORCH:
                 import torch as _torch
+
                 X_tensor = _torch.from_numpy(X_np).to(self.device)
             else:
                 # Return numpy view for fallback
-                return np.zeros((num_sequences, self.lookback_periods, len(selected_cols)), dtype=np.float32)
+                return np.zeros(
+                    (num_sequences, self.lookback_periods, len(selected_cols)), dtype=np.float32
+                )
         else:
             if _HAS_TORCH:
                 import torch as _torch
+
                 # Create empty tensor with correct shape if no sequences can be created
-                X_tensor = _torch.zeros((0, self.lookback_periods, len(selected_cols)), dtype=_torch.float32)
+                X_tensor = _torch.zeros(
+                    (0, self.lookback_periods, len(selected_cols)), dtype=_torch.float32
+                )
             else:
                 return np.zeros((0, self.lookback_periods, len(selected_cols)), dtype=np.float32)
 
@@ -375,24 +395,26 @@ class MarketPredictor:
         This is intentionally conservative to avoid destabilizing the model during live trading.
         """
         try:
-            success = bool(trade_record.get('success', False))
-            profit = float(trade_record.get('profit', 0.0))
-            self.eval_history.append({
-                'timestamp': trade_record.get('timestamp'),
-                'success': success,
-                'profit': profit,
-                'asset': trade_record.get('asset'),
-                'timeframe': trade_record.get('timeframe')
-            })
+            success = bool(trade_record.get("success", False))
+            profit = float(trade_record.get("profit", 0.0))
+            self.eval_history.append(
+                {
+                    "timestamp": trade_record.get("timestamp"),
+                    "success": success,
+                    "profit": profit,
+                    "asset": trade_record.get("asset"),
+                    "timeframe": trade_record.get("timeframe"),
+                }
+            )
             # Simple adaptive LR: decrease on recent losses, increase slightly on wins
             if len(self.eval_history) >= 5:
                 recent = self.eval_history[-5:]
-                win_rate = builtins.sum(1 for r in recent if r['success']) / 5.0
+                win_rate = builtins.sum(1 for r in recent if r["success"]) / 5.0
                 for g in self.optimizer.param_groups:
-                    base_lr = g.get('initial_lr', g['lr'])
+                    base_lr = g.get("initial_lr", g["lr"])
                     # Keep within [1e-5, 5e-4]
                     new_lr = float(np.clip(base_lr * (0.9 if win_rate < 0.4 else 1.05), 1e-5, 5e-4))
-                    g['lr'] = new_lr
+                    g["lr"] = new_lr
         except Exception:
             pass
 
@@ -400,12 +422,15 @@ class MarketPredictor:
         """Save the model to disk."""
         try:
             # Save model parameters
-            torch.save({
-                'model_state_dict': self.model.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict(),
-                'feature_means': self.feature_means,
-                'feature_stds': self.feature_stds
-            }, self.model_path / "transformer_model.pth")
+            torch.save(
+                {
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": self.optimizer.state_dict(),
+                    "feature_means": self.feature_means,
+                    "feature_stds": self.feature_stds,
+                },
+                self.model_path / "transformer_model.pth",
+            )
 
             logger.info("Market Transformer model saved successfully")
 
@@ -423,12 +448,13 @@ class MarketPredictor:
             return False
         try:
             import torch as _torch
+
             model_file = self.model_path / "transformer_model.pth"
             if model_file.exists():
                 checkpoint = _torch.load(model_file, map_location=self.device)
-                self.model.load_state_dict(checkpoint['model_state_dict'])  # type: ignore
-                self.feature_means = checkpoint['feature_means']
-                self.feature_stds = checkpoint['feature_stds']
+                self.model.load_state_dict(checkpoint["model_state_dict"])  # type: ignore
+                self.feature_means = checkpoint["feature_means"]
+                self.feature_stds = checkpoint["feature_stds"]
 
                 logger.info("Market Transformer model loaded successfully")
                 return True
@@ -455,9 +481,7 @@ class MarketPredictor:
 
         # Create dataset and dataloader
         dataset = torch.utils.data.TensorDataset(X, y)
-        dataloader = torch.utils.data.DataLoader(
-            dataset, batch_size=self.batch_size, shuffle=True
-        )
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
         # Training loop
         self.model.train()
@@ -487,7 +511,9 @@ class MarketPredictor:
             # Epoch summary
             accuracy = correct / total if total > 0 else 0
             avg_loss = epoch_loss / len(dataloader) if dataloader else 0
-            logger.info(f"Epoch {epoch+1}/{epochs}, Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
+            logger.info(
+                f"Epoch {epoch + 1}/{epochs}, Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}"
+            )
 
             # Update learning rate scheduler
             self.scheduler.step(avg_loss)
@@ -497,7 +523,9 @@ class MarketPredictor:
 
         return True
 
-    async def predict(self, data: pd.DataFrame, asset: str, timeframe: int, regime: str = None) -> Dict:
+    async def predict(
+        self, data: pd.DataFrame, asset: str, timeframe: int, regime: Optional[str] = None
+    ) -> Dict:
         """
         Generate trading signal prediction.
 
@@ -515,7 +543,7 @@ class MarketPredictor:
             return {
                 "signal": "hold",
                 "confidence": 0.0,
-                "reasoning": "Insufficient data for analysis"
+                "reasoning": "Insufficient data for analysis",
             }
 
         # Preprocess data
@@ -526,11 +554,7 @@ class MarketPredictor:
             X_latest = X[-1:]
         else:
             logger.warning("No valid sequences generated after preprocessing")
-            return {
-                "signal": "hold",
-                "confidence": 0.0,
-                "reasoning": "Data preprocessing failed"
-            }
+            return {"signal": "hold", "confidence": 0.0, "reasoning": "Data preprocessing failed"}
 
         # Ensure input shape is [batch, seq_length, feature_dim]
         if X_latest.dim() == 3:
@@ -545,7 +569,7 @@ class MarketPredictor:
         with torch.no_grad():
             logits, confidence = self.model(X_latest)
             probabilities = torch.softmax(logits, dim=1)
-            predicted_class = torch.argmax(logits, dim=1).item()
+            predicted_class = int(torch.argmax(logits, dim=1).item())
             confidence_value = confidence.item()
 
             # Get class probabilities
@@ -561,7 +585,7 @@ class MarketPredictor:
                     "ranging": 1.1 if signal == "hold" else 0.9,
                     "volatile": 0.8,  # Reduce confidence in volatile markets
                     "reversal": 1.0,
-                    "unknown": 0.9
+                    "unknown": 0.9,
                 }
                 regime_factor = regime_confidence_factors.get(regime, 1.0)
                 adjusted_confidence = min(0.95, confidence_value * regime_factor)
@@ -571,10 +595,10 @@ class MarketPredictor:
             # Extract features for the prediction
             feature_values = X_latest[0, -1].cpu().numpy()
             normalized_features = {
-                'trend_strength': feature_values[14],
-                'volatility': feature_values[15],
-                'momentum': feature_values[16],
-                'mean_reversion': feature_values[17]
+                "trend_strength": feature_values[14],
+                "volatility": feature_values[15],
+                "momentum": feature_values[16],
+                "mean_reversion": feature_values[17],
             }
 
             # Generate reasoning
@@ -588,23 +612,27 @@ class MarketPredictor:
                 "probabilities": {
                     "hold": float(probs[0]),
                     "call": float(probs[1]),
-                    "put": float(probs[2])
+                    "put": float(probs[2]),
                 },
                 "features": {
-                    "trend_strength": float(normalized_features['trend_strength']),
-                    "volatility": float(normalized_features['volatility']),
-                    "momentum": float(normalized_features['momentum']),
-                    "mean_reversion": float(normalized_features['mean_reversion'])
+                    "trend_strength": float(normalized_features["trend_strength"]),
+                    "volatility": float(normalized_features["volatility"]),
+                    "momentum": float(normalized_features["momentum"]),
+                    "mean_reversion": float(normalized_features["mean_reversion"]),
                 },
                 "timeframe": timeframe,
-                "asset": asset
+                "asset": asset,
             }
 
-            logger.debug(f"Generated prediction: {signal} with {adjusted_confidence:.2f} confidence")
+            logger.debug(
+                f"Generated prediction: {signal} with {adjusted_confidence:.2f} confidence"
+            )
 
             return result
 
-    def _generate_reasoning(self, signal: str, probs: np.ndarray, features: Dict, regime: Optional[str] = None) -> str:
+    def _generate_reasoning(
+        self, signal: str, probs: np.ndarray, features: Dict, regime: Optional[str] = None
+    ) -> str:
         """
         Generate human-readable reasoning for the prediction.
 
@@ -618,10 +646,10 @@ class MarketPredictor:
             str: Reasoning explanation
         """
         # Generate base reasoning from signal and features
-        trend = features['trend_strength']
-        volatility = features['volatility']
-        momentum = features['momentum']
-        mean_reversion = features['mean_reversion']
+        trend = features["trend_strength"]
+        volatility = features["volatility"]
+        momentum = features["momentum"]
+        mean_reversion = features["mean_reversion"]
 
         if signal == "call":
             if momentum > 0.5:

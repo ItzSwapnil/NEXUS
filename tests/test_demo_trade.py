@@ -1,6 +1,7 @@
-
 import pytest
+
 from nexus.scripts.smoke_real_trade import run_trade
+
 
 @pytest.mark.asyncio
 async def test_place_demo_trade():
@@ -14,7 +15,7 @@ async def test_place_demo_trade():
     direction = "call"
     demo = True
     email_override = "test@example.com"  # Use a dummy email for the test
-    password_override = "testpassword"   # Use a dummy password for the test
+    password_override = "testpassword"  # Use a dummy password for the test
 
     # Run the trade function
     result = await run_trade(

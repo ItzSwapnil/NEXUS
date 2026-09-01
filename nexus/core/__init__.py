@@ -13,4 +13,5 @@ except Exception:  # pragma: no cover
     class NexusEngine:  # type: ignore
         pass
 
+
 __all__ = ["NexusEngine"]

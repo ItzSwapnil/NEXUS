@@ -1,11 +1,13 @@
 """Payout helpers and override."""
+
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime, timezone
 import json
 import os
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional, Union
+
 from nexus.catalog.ingest import Market, get_market_by_symbol
 from nexus.utils.logger import get_nexus_logger
 
@@ -16,7 +18,9 @@ _override_log_path = Path("logs/payout_override.log")
 _override_log_path.parent.mkdir(exist_ok=True)
 
 
-def get_payout_for_market(market_or_symbol: Union[Market, str], expiration: Optional[str] = None) -> float:
+def get_payout_for_market(
+    market_or_symbol: Union[Market, str], expiration: Optional[str] = None
+) -> float:
     """Return payout % for a Market or symbol."""
     market: Optional[Market] = None
     if isinstance(market_or_symbol, Market):
@@ -58,6 +62,7 @@ def set_payout_override(enabled: bool, user: Optional[str] = None, reason: str =
 
 def is_override_enabled() -> bool:
     return _override_enabled
+
 
 __all__ = [
     "get_payout_for_market",

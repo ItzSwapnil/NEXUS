@@ -5,8 +5,11 @@ controller and promotion logic. All metrics are expected to be supplied as raw
 values; this module performs simple min/max style normalization with basic
 safeguards so tests do not require historical buffers.
 """
+
 from __future__ import annotations
+
 from dataclasses import dataclass, field
+
 
 @dataclass
 class FitnessWeights:
@@ -20,6 +23,7 @@ class FitnessWeights:
     gamma_slippage: float
     gamma_constraint: float
 
+
 @dataclass
 class CandidateMetrics:
     sharpe: float = 0.0
@@ -32,6 +36,7 @@ class CandidateMetrics:
     slippage: float = 0.0
     constraint_violations: float = 0.0
 
+
 @dataclass
 class CandidateState:
     name: str
@@ -40,14 +45,17 @@ class CandidateState:
     fitness: float = 0.0
     promotion_windows_ok: int = 0  # consecutive windows passing threshold
 
+
 # Simple clamp for general use
-def _clamp(v, lo, hi):
+def _clamp(v: float, lo: float, hi: float) -> float:
     return hi if v > hi else lo if v < lo else v
+
 
 def _norm_positive(x: float, max_ref: float, min_ref: float = 0.0) -> float:
     if max_ref <= min_ref:
         return 0.0
-    return _clamp((x - min_ref) / (max_ref - min_ref), 0.0, 1.0)
+    return float(_clamp((x - min_ref) / (max_ref - min_ref), 0.0, 1.0))
+
 
 def compute_composite_fitness(m: CandidateMetrics, w: FitnessWeights) -> float:
     """Compute fitness as defined in Spec §4.
@@ -74,15 +82,14 @@ def compute_composite_fitness(m: CandidateMetrics, w: FitnessWeights) -> float:
     constraint_n = _norm_positive(m.constraint_violations, 10)
 
     fitness = (
-        w.alpha_sharpe * sharpe_n +
-        w.alpha_sortino * sortino_n +
-        w.alpha_profit_factor * profit_factor_n +
-        w.alpha_payout * payout_n -
-        w.beta_mdd * mdd_n -
-        w.beta_ulcer * ulcer_n -
-        w.beta_turnover * turnover_n -
-        w.gamma_slippage * slippage_n -
-        w.gamma_constraint * constraint_n
+        w.alpha_sharpe * sharpe_n
+        + w.alpha_sortino * sortino_n
+        + w.alpha_profit_factor * profit_factor_n
+        + w.alpha_payout * payout_n
+        - w.beta_mdd * mdd_n
+        - w.beta_ulcer * ulcer_n
+        - w.beta_turnover * turnover_n
+        - w.gamma_slippage * slippage_n
+        - w.gamma_constraint * constraint_n
     )
     return float(_clamp(fitness, 0.0, 1.0))
-

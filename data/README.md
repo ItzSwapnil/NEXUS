@@ -38,7 +38,7 @@ df = await provider.get_ohlcv(
     symbol="EURUSD",
     timeframe=5,
     limit=500,
-    use_cache=True  # Uses cache if available
+    use_cache=True,  # Uses cache if available
 )
 ```
 

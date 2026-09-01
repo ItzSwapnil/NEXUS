@@ -1,5 +1,5 @@
-import logging
 import importlib.util
+import logging
 
 logger = logging.getLogger("nexus.gui.dashboard")
 

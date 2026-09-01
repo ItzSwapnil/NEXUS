@@ -7,11 +7,13 @@ import os
 from typing import Any, List
 
 from nexus.adapters.quotex_adapter import QuotexAdapter
-from nexus.catalog.ingest import fetch_live_catalog, get_market_catalog, get_market_by_symbol
+from nexus.catalog.ingest import fetch_live_catalog, get_market_by_symbol, get_market_catalog
 from nexus.payouts.fetch import get_payout_for_market
 
 
-async def _fetch_assets(email: str | None, password: str | None, demo: bool, otc_only: bool) -> dict[str, Any]:
+async def _fetch_assets(
+    email: str | None, password: str | None, demo: bool, otc_only: bool
+) -> dict[str, Any]:
     qa = QuotexAdapter(email=email or "", password=password or "", demo_mode=bool(demo))
     connected = await qa.connect()
 
@@ -58,7 +60,11 @@ async def _fetch_assets(email: str | None, password: str | None, demo: bool, otc
     # Build payouts for visible assets using enriched first, then catalog
     assets_with_payouts: list[dict[str, Any]] = []
     # Map from enriched for quick lookup
-    enriched_map = {str(x.get("symbol")): float(x.get("payout", 0.0) or 0.0) for x in enriched if x.get("symbol")}
+    enriched_map = {
+        str(x.get("symbol")): float(x.get("payout", 0.0) or 0.0)
+        for x in enriched
+        if x.get("symbol")
+    }
 
     for sym in out_assets:
         payout = float(enriched_map.get(sym, 0.0))
@@ -70,7 +76,14 @@ async def _fetch_assets(email: str | None, password: str | None, demo: bool, otc
             except Exception:
                 m = None
             if m is None and "OTC" in str(sym).upper():
-                base = str(sym).replace("-OTC", "").replace("OTC_", "").replace("OTC-", "").replace("_OTC", "").strip()
+                base = (
+                    str(sym)
+                    .replace("-OTC", "")
+                    .replace("OTC_", "")
+                    .replace("OTC-", "")
+                    .replace("_OTC", "")
+                    .strip()
+                )
                 for variant in (f"OTC_{base}", f"{base}-OTC", base):
                     m = get_market_by_symbol(variant)
                     if m:

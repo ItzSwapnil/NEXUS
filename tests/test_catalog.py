@@ -1,5 +1,7 @@
 import pytest
-from nexus.catalog.ingest import get_market_catalog, get_market_by_symbol
+
+from nexus.catalog.ingest import get_market_by_symbol, get_market_catalog
+
 
 @pytest.mark.asyncio
 async def test_catalog_contains_otc_and_standard_pairs():
@@ -11,6 +13,7 @@ async def test_catalog_contains_otc_and_standard_pairs():
     assert eurusd is not None
     assert eurusd.payout_per_expiration is not None
 
+
 @pytest.mark.asyncio
 async def test_effective_payout_resolution():
     catalog = await get_market_catalog()
@@ -19,4 +22,3 @@ async def test_effective_payout_resolution():
     exp60 = eurusd.effective_payout("60")
     assert exp60 == eurusd.payout_per_expiration["60"]
     assert base >= 80.0
-

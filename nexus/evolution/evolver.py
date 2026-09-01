@@ -23,47 +23,53 @@ Future Extensions:
  - Pluggable mutation strategies.
  - Parallel evaluation.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Dict, List, Any
 import json
-import random
-from pathlib import Path
 import math
+import random
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List
+
 import pandas as pd
 
-from nexus.strategies.meta_strategy import MetaStrategy, StrategyConfig
 from nexus.backtest.backtester import Backtester
 from nexus.core.engine import NexusEngine
-from nexus.utils.config import NexusSettings
 from nexus.intelligence.fitness import (
     CandidateMetrics,
     FitnessWeights,
     compute_composite_fitness,
 )
+from nexus.strategies.meta_strategy import MetaStrategy, StrategyConfig
+from nexus.utils.config import NexusSettings
+
 CHAMPION_PATH = Path("models/meta_strategy_champion.json")
 HOF_PATH = Path("evolution/hall_of_fame.json")
 
 # ---------------------------- Data Structures ---------------------------- #
+
 
 @dataclass
 class EvolutionConfig:
     population_size: int = 6
     generations: int = 3
     elite_fraction: float = 0.3
-    mutation_rate: float = 0.25         # probability a weight is mutated
-    mutation_strength: float = 0.15     # gaussian stddev scale
+    mutation_rate: float = 0.25  # probability a weight is mutated
+    mutation_strength: float = 0.15  # gaussian stddev scale
     backtest_rows: int = 240
     backtest_window: int = 50
     timeframe: int = 1
     random_seed: int = 42
+
 
 @dataclass
 class Candidate:
     weights: Dict[str, float]
     fitness: float = 0.0
     metrics: Dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass
 class GenerationResult:
@@ -73,26 +79,30 @@ class GenerationResult:
     best_weights: Dict[str, float]
     path: Path
 
+
 # ---------------------------- Helper Functions --------------------------- #
+
 
 def _normalize_weights(raw: Dict[str, float]) -> Dict[str, float]:
     total = sum(max(v, 0.0) for v in raw.values())
     if total <= 0:
         n = len(raw)
-        return {k: 1.0 / n for k in raw}
+        return dict.fromkeys(raw, 1.0 / n)
     return {k: max(v, 0.0) / total for k, v in raw.items()}
+
 
 def _synthetic_ohlc(rows: int) -> pd.DataFrame:
     # Simple upward drift with minor oscillation
-    base = [i + math.sin(i/10.0)*0.5 for i in range(rows)]
+    base = [i + math.sin(i / 10.0) * 0.5 for i in range(rows)]
     data = {
-        'open': [float(x) for x in base],
-        'close': [float(x) + 0.2 for x in base],
-        'high': [float(x) + 0.4 for x in base],
-        'low': [float(x) - 0.4 for x in base],
-        'volume': [1000.0 for _ in range(rows)],
+        "open": [float(x) for x in base],
+        "close": [float(x) + 0.2 for x in base],
+        "high": [float(x) + 0.4 for x in base],
+        "low": [float(x) - 0.4 for x in base],
+        "volume": [1000.0 for _ in range(rows)],
     }
     return pd.DataFrame(data)
+
 
 def _candidate_metrics_from_backtest(bt: Any) -> CandidateMetrics:
     # Map backtester result to expected metrics (heuristic approximations)
@@ -113,7 +123,9 @@ def _candidate_metrics_from_backtest(bt: Any) -> CandidateMetrics:
         max_drawdown=max_dd,
     )
 
+
 # ---------------------------- Evolution Runner --------------------------- #
+
 
 class EvolutionRunner:
     def __init__(self, engine: NexusEngine, config: EvolutionConfig, settings: NexusSettings):
@@ -121,7 +133,7 @@ class EvolutionRunner:
         self.config = config
         self.settings = settings
         self.random = random.Random(config.random_seed)
-        self.output_dir = Path('evolution')
+        self.output_dir = Path("evolution")
         self.output_dir.mkdir(exist_ok=True)
         self.fitness_weights = FitnessWeights(
             alpha_sharpe=settings.fitness.alpha_sharpe,
@@ -157,15 +169,17 @@ class EvolutionRunner:
         strategy_cfg.ensemble_weights = candidate.weights.copy()
         meta = MetaStrategy(config=strategy_cfg)  # models omitted for speed
         bt = Backtester(window=self.config.backtest_window, expiration=60)
-        result = await bt.run(meta, self.engine, df, asset="EURUSD", timeframe=self.config.timeframe)
+        result = await bt.run(
+            meta, self.engine, df, asset="EURUSD", timeframe=self.config.timeframe
+        )
         metrics = _candidate_metrics_from_backtest(result)
         fitness = compute_composite_fitness(metrics, self.fitness_weights)
         candidate.fitness = fitness
         candidate.metrics = {
-            'total_profit': result.total_profit,
-            'win_rate': result.win_rate,
-            'max_drawdown': result.max_drawdown,
-            'profit_factor': result.profit_factor,
+            "total_profit": result.total_profit,
+            "win_rate": result.win_rate,
+            "max_drawdown": result.max_drawdown,
+            "profit_factor": result.profit_factor,
         }
         return candidate
 
@@ -185,29 +199,39 @@ class EvolutionRunner:
             evaluated.sort(key=lambda c: c.fitness, reverse=True)
             best = evaluated[0]
             gen_path = self.output_dir / f"generation_{g}.json"
-            with open(gen_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    'generation': g,
-                    'best_fitness': best.fitness,
-                    'best_weights': best.weights,
-                    'candidates': [
-                        {
-                            'fitness': c.fitness,
-                            'weights': c.weights,
-                            'metrics': c.metrics,
-                        } for c in evaluated
-                    ]
-                }, f, indent=2)
-            generations.append(GenerationResult(
-                generation=g,
-                candidates=evaluated,
-                best_fitness=best.fitness,
-                best_weights=best.weights,
-                path=gen_path,
-            ))
+            with open(gen_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "generation": g,
+                        "best_fitness": best.fitness,
+                        "best_weights": best.weights,
+                        "candidates": [
+                            {
+                                "fitness": c.fitness,
+                                "weights": c.weights,
+                                "metrics": c.metrics,
+                            }
+                            for c in evaluated
+                        ],
+                    },
+                    f,
+                    indent=2,
+                )
+            generations.append(
+                GenerationResult(
+                    generation=g,
+                    candidates=evaluated,
+                    best_fitness=best.fitness,
+                    best_weights=best.weights,
+                    path=gen_path,
+                )
+            )
             # Prepare next population
             elites = evaluated[:elite_count]
-            next_pop: List[Candidate] = [Candidate(weights=e.weights.copy(), fitness=e.fitness, metrics=e.metrics) for e in elites]
+            next_pop: List[Candidate] = [
+                Candidate(weights=e.weights.copy(), fitness=e.fitness, metrics=e.metrics)
+                for e in elites
+            ]
             # Fill rest with mutated offspring
             while len(next_pop) < self.config.population_size:
                 parent = self.random.choice(elites)
@@ -219,30 +243,38 @@ class EvolutionRunner:
             champion = generations[-1].candidates[0]
             try:
                 CHAMPION_PATH.parent.mkdir(exist_ok=True, parents=True)
-                CHAMPION_PATH.write_text(json.dumps({
-                    'weights': champion.weights,
-                    'fitness': champion.fitness,
-                    'generation': generations[-1].generation,
-                }, indent=2), encoding='utf-8')
+                CHAMPION_PATH.write_text(
+                    json.dumps(
+                        {
+                            "weights": champion.weights,
+                            "fitness": champion.fitness,
+                            "generation": generations[-1].generation,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
             except Exception:
                 pass
             # Hall of fame aggregation (top 10 by fitness)
             hof: List[Dict[str, Any]] = []
             if HOF_PATH.exists():
                 try:
-                    hof = json.loads(HOF_PATH.read_text(encoding='utf-8')) or []
+                    hof = json.loads(HOF_PATH.read_text(encoding="utf-8")) or []
                 except Exception:
                     hof = []
-            hof.append({
-                'generation': generations[-1].generation,
-                'fitness': champion.fitness,
-                'weights': champion.weights,
-            })
+            hof.append(
+                {
+                    "generation": generations[-1].generation,
+                    "fitness": champion.fitness,
+                    "weights": champion.weights,
+                }
+            )
             # Deduplicate by weights signature
             seen = set()
             filtered: List[Dict[str, Any]] = []
-            for entry in sorted(hof, key=lambda x: x.get('fitness', 0), reverse=True):
-                sig = tuple(sorted((k, round(v,4)) for k,v in entry.get('weights', {}).items()))
+            for entry in sorted(hof, key=lambda x: x.get("fitness", 0), reverse=True):
+                sig = tuple(sorted((k, round(v, 4)) for k, v in entry.get("weights", {}).items()))
                 if sig in seen:
                     continue
                 seen.add(sig)
@@ -250,14 +282,15 @@ class EvolutionRunner:
                 if len(filtered) >= 10:
                     break
             try:
-                HOF_PATH.write_text(json.dumps(filtered, indent=2), encoding='utf-8')
+                HOF_PATH.write_text(json.dumps(filtered, indent=2), encoding="utf-8")
             except Exception:
                 pass
         return generations
 
+
 __all__ = [
-    'EvolutionConfig',
-    'EvolutionRunner',
-    'GenerationResult',
-    'Candidate',
+    "EvolutionConfig",
+    "EvolutionRunner",
+    "GenerationResult",
+    "Candidate",
 ]

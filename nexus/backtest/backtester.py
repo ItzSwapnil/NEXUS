@@ -22,18 +22,20 @@ Usage Example:
 
 The design keeps dependencies minimal so tests remain fast.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Any
-import pandas as pd
 import json
-from datetime import datetime, UTC
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Dict, List
+
+import pandas as pd
 
 from nexus.core.engine import NexusEngine
-from nexus.strategies.meta_strategy import MetaStrategy, SignalType
 from nexus.payouts.fetch import get_payout_for_market
+from nexus.strategies.meta_strategy import MetaStrategy, SignalType
 
 
 @dataclass
@@ -123,7 +125,9 @@ class Backtester:
 
             # Ask strategy for signal
             try:
-                sig_tuple = await meta_strategy.generate_signal(window_df, asset=asset, timeframe=timeframe)
+                sig_tuple = await meta_strategy.generate_signal(
+                    window_df, asset=asset, timeframe=timeframe
+                )
             except Exception:
                 # Strategy failure -> skip silently (could log in future)
                 continue
@@ -138,10 +142,20 @@ class Backtester:
 
             if mode == "market":
                 # Determine outcome using OHLC close after expiry steps
-                entry_close = float(window_df.iloc[-1]["close"]) if "close" in window_df.columns else float(window_df.iloc[-1])
+                entry_close = (
+                    float(window_df.iloc[-1]["close"])
+                    if "close" in window_df.columns
+                    else float(window_df.iloc[-1])
+                )
                 exit_idx = min(i + steps, len(data) - 1)
-                exit_close = float(data.iloc[exit_idx]["close"]) if "close" in data.columns else float(data.iloc[exit_idx])
-                is_win = (sig_type.value == "call" and exit_close > entry_close) or (sig_type.value == "put" and exit_close < entry_close)
+                exit_close = (
+                    float(data.iloc[exit_idx]["close"])
+                    if "close" in data.columns
+                    else float(data.iloc[exit_idx])
+                )
+                is_win = (sig_type.value == "call" and exit_close > entry_close) or (
+                    sig_type.value == "put" and exit_close < entry_close
+                )
                 payout = get_payout_for_market(asset, str(self.expiration)) or 80.0
                 profit = amount * (float(payout) / 100.0) if is_win else -amount
                 success = bool(is_win)
@@ -152,7 +166,9 @@ class Backtester:
                     pass
             else:
                 # Execute trade (simulation via engine)
-                trade_result = await engine.execute_trade(asset, sig_type.value, amount, self.expiration)
+                trade_result = await engine.execute_trade(
+                    asset, sig_type.value, amount, self.expiration
+                )
                 profit = float(trade_result.get("profit", 0.0) or 0.0)
                 success = bool(trade_result.get("success")) and profit >= 0
 
@@ -191,44 +207,52 @@ class Backtester:
         total = len(trades)
         win_rate = (wins / total) if total else 0.0
         avg_profit = (total_profit / total) if total else 0.0
-        profit_factor = (gross_profit / gross_loss) if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0.0)
+        profit_factor = (
+            (gross_profit / gross_loss)
+            if gross_loss > 0
+            else (gross_profit if gross_profit > 0 else 0.0)
+        )
 
         bt_result = BacktestResult(
-             total_trades=total,
-             total_profit=round(total_profit, 4),
-             winning_trades=wins,
-             losing_trades=losses,
-             win_rate=round(win_rate, 4),
-             average_profit=round(avg_profit, 4),
-             max_drawdown=round(max_drawdown, 4),
-             profit_factor=round(profit_factor, 4),
-             equity_curve=[round(x, 4) for x in equity_curve[1:]],
-             exploratory_trades=exploratory_count,
-             trades=trades,
-             meta={
-                 "window": self.window,
-                 "asset": asset,
-                 "timeframe": timeframe,
-                 "mode": mode,
-             },
-         )
+            total_trades=total,
+            total_profit=round(total_profit, 4),
+            winning_trades=wins,
+            losing_trades=losses,
+            win_rate=round(win_rate, 4),
+            average_profit=round(avg_profit, 4),
+            max_drawdown=round(max_drawdown, 4),
+            profit_factor=round(profit_factor, 4),
+            equity_curve=[round(x, 4) for x in equity_curve[1:]],
+            exploratory_trades=exploratory_count,
+            trades=trades,
+            meta={
+                "window": self.window,
+                "asset": asset,
+                "timeframe": timeframe,
+                "mode": mode,
+            },
+        )
 
         # Persist JSON report (compact)
         try:
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
             report_path = self.reports_dir / f"backtest_{asset}_{stamp}.json"
             with open(report_path, "w", encoding="utf-8") as f:
-                json.dump({
-                    "summary": {
-                        "total_trades": bt_result.total_trades,
-                        "total_profit": bt_result.total_profit,
-                        "win_rate": bt_result.win_rate,
-                        "max_drawdown": bt_result.max_drawdown,
-                        "profit_factor": bt_result.profit_factor,
-                        "exploratory_trades": bt_result.exploratory_trades,
+                json.dump(
+                    {
+                        "summary": {
+                            "total_trades": bt_result.total_trades,
+                            "total_profit": bt_result.total_profit,
+                            "win_rate": bt_result.win_rate,
+                            "max_drawdown": bt_result.max_drawdown,
+                            "profit_factor": bt_result.profit_factor,
+                            "exploratory_trades": bt_result.exploratory_trades,
+                        },
+                        "meta": bt_result.meta,
                     },
-                    "meta": bt_result.meta,
-                }, f, indent=2)
+                    f,
+                    indent=2,
+                )
             bt_result.meta["report_path"] = str(report_path)
         except Exception:
             pass

@@ -4,9 +4,10 @@ This module exposes a simple runtime registry used by CLI and tooling to
 list and resolve strategies or models by name without importing heavy
 subsystems eagerly.
 """
+
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 
 class _Registry:

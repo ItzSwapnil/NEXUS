@@ -1,11 +1,13 @@
 import json
-import pytest
 from pathlib import Path
 
-from nexus.evolution.evolver import EvolutionRunner, EvolutionConfig
-from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
+import pytest
+
 from nexus.core.engine import NexusEngine
-from nexus.strategies.meta_strategy import MetaStrategy, TradingSignal, SignalType
+from nexus.evolution.evolver import EvolutionConfig, EvolutionRunner
+from nexus.strategies.meta_strategy import MetaStrategy, SignalType, TradingSignal
+from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
+
 
 @pytest.mark.asyncio
 async def test_basic_evolution_run(tmp_path, monkeypatch):
@@ -13,7 +15,7 @@ async def test_basic_evolution_run(tmp_path, monkeypatch):
     # Minimal settings / engine
     settings = NexusSettings(
         quotex=QuotexSettings(email="e@x", password="pw"),
-        trading=TradingSettings(base_trade_amount=5.0)
+        trading=TradingSettings(base_trade_amount=5.0),
     )
     engine = NexusEngine(settings=settings, demo_mode=True)
     cfg = EvolutionConfig(population_size=3, generations=1, backtest_rows=60, backtest_window=20)
@@ -31,16 +33,21 @@ async def test_basic_evolution_run(tmp_path, monkeypatch):
     hof = json.loads(hof_path.read_text(encoding="utf-8"))
     assert isinstance(hof, list) and len(hof) >= 1
 
+
 @pytest.mark.asyncio
 async def test_circuit_breaker_activation(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("NEXUS_MAX_DRAWDOWN_PCT", "0.01")  # very low threshold
+    monkeypatch.setenv("NEXUS_FORCE_SIM", "1")
     monkeypatch.setenv("NEXUS_ENABLE_STOCHASTIC", "1")
     monkeypatch.setenv("NEXUS_P_WIN", "0.0")  # force loss
-    monkeypatch.setenv("NEXUS_LOSS_MULT_RANGE", "2.0,2.0")  # deterministic large loss to trigger breaker
+    monkeypatch.setenv(
+        "NEXUS_LOSS_MULT_RANGE", "2.0,2.0"
+    )  # deterministic large loss to trigger breaker
+
     settings = NexusSettings(
         quotex=QuotexSettings(email="e@x", password="pw"),
-        trading=TradingSettings(base_trade_amount=10.0)
+        trading=TradingSettings(base_trade_amount=10.0),
     )
     engine = NexusEngine(settings=settings, demo_mode=True)
     # One losing trade triggers drawdown and circuit breaker
@@ -52,6 +59,7 @@ async def test_circuit_breaker_activation(tmp_path, monkeypatch):
     # Position sizing now clamped
     sized = engine.advanced_risk_management({}, 100.0)
     assert sized == 1.0
+
 
 @pytest.mark.asyncio
 async def test_market_memory_persistence(tmp_path, monkeypatch):
@@ -66,7 +74,7 @@ async def test_market_memory_persistence(tmp_path, monkeypatch):
         timeframe=1,
         reasoning="test",
         source_model="ensemble",
-        timestamp=__import__('datetime').datetime.now(),
+        timestamp=__import__("datetime").datetime.now(),
         features={"trend_strength": 0.7, "volatility": 0.2, "momentum": 0.4},
     )
     await ms.update_performance(sig, success=True, profit=5.0)

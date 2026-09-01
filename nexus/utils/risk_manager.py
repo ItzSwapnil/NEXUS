@@ -10,10 +10,10 @@ Provides sophisticated risk controls including:
 - Multi-asset portfolio risk
 """
 
-from typing import Dict, Optional, Any, List
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 import math
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from nexus.utils.logger import get_nexus_logger
 
@@ -23,6 +23,7 @@ logger = get_nexus_logger("nexus.utils.risk_manager")
 @dataclass
 class RiskLimits:
     """Risk limit configuration."""
+
     max_position_size: float = 100.0
     max_daily_loss: float = 500.0
     max_drawdown_percent: float = 20.0
@@ -37,6 +38,7 @@ class RiskLimits:
 @dataclass
 class PortfolioState:
     """Current portfolio state for risk calculations."""
+
     current_equity: float = 10000.0
     daily_pnl: float = 0.0
     peak_equity: float = 10000.0
@@ -126,7 +128,7 @@ class RiskManager:
         win_rate: Optional[float] = None,
         avg_win: Optional[float] = None,
         avg_loss: Optional[float] = None,
-        volatility: Optional[float] = None
+        volatility: Optional[float] = None,
     ) -> float:
         """
         Calculate optimal position size using various methods.
@@ -146,7 +148,7 @@ class RiskManager:
 
         # Apply confidence scaling
         confidence = max(0.0, min(1.0, confidence))
-        position_size *= (0.5 + confidence * 0.5)  # Scale from 50% to 100%
+        position_size *= 0.5 + confidence * 0.5  # Scale from 50% to 100%
 
         # Apply Kelly Criterion if enabled and we have required data
         if self.limits.use_kelly_criterion and win_rate and avg_win and avg_loss:
@@ -255,13 +257,15 @@ class RiskManager:
             self.state.consecutive_losses += 1
 
         # Store trade history
-        self.trade_history.append({
-            'timestamp': datetime.now(),
-            'profit': profit,
-            'success': success,
-            'equity': self.state.current_equity,
-            'daily_pnl': self.state.daily_pnl,
-        })
+        self.trade_history.append(
+            {
+                "timestamp": datetime.now(),
+                "profit": profit,
+                "success": success,
+                "equity": self.state.current_equity,
+                "daily_pnl": self.state.daily_pnl,
+            }
+        )
 
         # Log risk metrics
         drawdown = self._calculate_drawdown_percent()
@@ -278,14 +282,14 @@ class RiskManager:
             Dictionary of risk metrics
         """
         return {
-            'current_equity': self.state.current_equity,
-            'peak_equity': self.state.peak_equity,
-            'daily_pnl': self.state.daily_pnl,
-            'drawdown_percent': self._calculate_drawdown_percent(),
-            'trades_today': self.state.trades_today,
-            'trades_this_hour': self.state.trades_this_hour,
-            'consecutive_losses': self.state.consecutive_losses,
-            'can_trade': self.can_trade()[0],
+            "current_equity": self.state.current_equity,
+            "peak_equity": self.state.peak_equity,
+            "daily_pnl": self.state.daily_pnl,
+            "drawdown_percent": self._calculate_drawdown_percent(),
+            "trades_today": self.state.trades_today,
+            "trades_this_hour": self.state.trades_this_hour,
+            "consecutive_losses": self.state.consecutive_losses,
+            "can_trade": self.can_trade()[0],
         }
 
     def reset(self) -> None:
@@ -297,5 +301,4 @@ class RiskManager:
         logger.info("RiskManager reset to initial state")
 
 
-__all__ = ['RiskManager', 'RiskLimits', 'PortfolioState']
-
+__all__ = ["RiskManager", "RiskLimits", "PortfolioState"]

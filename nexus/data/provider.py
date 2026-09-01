@@ -8,12 +8,12 @@ Provides unified interface for accessing market data from multiple sources:
 - Cached data (performance optimization)
 """
 
-from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
 from pathlib import Path
-import pandas as pd
+from typing import Any, Dict, List, Optional
+
 import numpy as np
-import json
+import pandas as pd
 
 from nexus.utils.logger import get_nexus_logger
 from nexus.utils.technical import calculate_features
@@ -59,7 +59,7 @@ class DataProvider:
         timeframe: int,
         limit: int = 500,
         source: str = "auto",
-        use_cache: bool = True
+        use_cache: bool = True,
     ) -> Optional[pd.DataFrame]:
         """
         Get OHLCV data for symbol and timeframe.
@@ -111,12 +111,19 @@ class DataProvider:
             if use_cache:
                 self._cache[cache_key] = df.copy()
 
-            logger.info("Retrieved %d candles for %s (%s timeframe) from %s",
-                       len(df), symbol, timeframe, source)
+            logger.info(
+                "Retrieved %d candles for %s (%s timeframe) from %s",
+                len(df),
+                symbol,
+                timeframe,
+                source,
+            )
 
         return df
 
-    async def _fetch_from_broker(self, symbol: str, timeframe: int, limit: int) -> Optional[pd.DataFrame]:
+    async def _fetch_from_broker(
+        self, symbol: str, timeframe: int, limit: int
+    ) -> Optional[pd.DataFrame]:
         """Fetch data from broker adapter."""
         if not self._broker:
             logger.error("Broker not configured")
@@ -164,30 +171,45 @@ class DataProvider:
             return None
 
     def _generate_synthetic(self, symbol: str, timeframe: int, limit: int) -> pd.DataFrame:
-        """Generate synthetic OHLCV data for testing."""
-        logger.info("Generating synthetic data for %s", symbol)
+        """Generate realistic synthetic OHLCV data using stochastic volatility and mean-reversion process."""
+        logger.info("Generating realistic market simulation data for %s", symbol)
 
-        # Generate random walk with trend
-        np.random.seed(hash(symbol) % (2**32))
+        seed = abs(hash(symbol)) % (2**32)
+        rng = np.random.default_rng(seed)
 
-        close_prices = []
+        close_prices = np.zeros(limit, dtype=np.float64)
         current_price = 100.0
-        trend = 0.0001  # Slight upward trend
-        volatility = 0.01
+        mu = 0.00005  # Drift
+        sigma = 0.008  # Base volatility
+        mean_price = 100.0
+        theta = 0.02  # Mean reversion strength
 
-        for _ in range(limit):
-            # Random walk with trend
-            change = np.random.normal(trend, volatility)
-            current_price *= (1 + change)
-            close_prices.append(current_price)
+        for i in range(limit):
+            # Stochastic volatility (GARCH-like process)
+            sigma = max(0.002, sigma + 0.05 * (rng.normal(0, 0.002) - 0.001))
+            # Mean reversion adjustment
+            reversion = theta * (mean_price - current_price) / current_price
+            # Jump diffusion component
+            jump = rng.normal(0, 0.02) if rng.random() < 0.02 else 0.0
 
-        # Generate OHLC from close prices
+            ret = mu + reversion + sigma * rng.normal(0, 1) + jump
+            current_price *= 1.0 + ret
+            close_prices[i] = current_price
+
+        # Generate realistic OHLC bounds
+        high_prices = close_prices * (1.0 + np.abs(rng.normal(0, 0.003, limit)))
+        low_prices = close_prices * (1.0 - np.abs(rng.normal(0, 0.003, limit)))
+        open_prices = np.roll(close_prices, 1)
+        open_prices[0] = close_prices[0]
+
+        volume = rng.integers(1000, 15000, size=limit)
+
         data = {
-            'close': close_prices,
-            'open': [close_prices[0]] + close_prices[:-1],
-            'high': [c * (1 + abs(np.random.normal(0, 0.005))) for c in close_prices],
-            'low': [c * (1 - abs(np.random.normal(0, 0.005))) for c in close_prices],
-            'volume': [np.random.randint(1000, 10000) for _ in range(limit)],
+            "close": close_prices,
+            "open": open_prices,
+            "high": np.maximum(high_prices, np.maximum(open_prices, close_prices)),
+            "low": np.minimum(low_prices, np.minimum(open_prices, close_prices)),
+            "volume": volume,
         }
 
         df = pd.DataFrame(data)
@@ -196,7 +218,7 @@ class DataProvider:
         end_time = datetime.now()
         start_time = end_time - timedelta(minutes=timeframe * limit)
         timestamps = pd.date_range(start=start_time, end=end_time, periods=limit)
-        df['timestamp'] = timestamps
+        df["timestamp"] = timestamps
 
         return df
 
@@ -208,11 +230,11 @@ class DataProvider:
     def _standardize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """Standardize DataFrame format and columns."""
         # Ensure required columns exist
-        required_cols = ['open', 'high', 'low', 'close']
+        required_cols = ["open", "high", "low", "close"]
         for col in required_cols:
             if col not in df.columns:
                 # Try alternate names
-                alt_names = {'open': 'o', 'high': 'h', 'low': 'l', 'close': 'c'}
+                alt_names = {"open": "o", "high": "h", "low": "l", "close": "c"}
                 if alt_names[col] in df.columns:
                     df[col] = df[alt_names[col]]
                 else:
@@ -220,23 +242,23 @@ class DataProvider:
                     raise ValueError(f"Missing column: {col}")
 
         # Add volume if missing
-        if 'volume' not in df.columns and 'v' not in df.columns:
-            df['volume'] = 0
-        elif 'v' in df.columns:
-            df['volume'] = df['v']
+        if "volume" not in df.columns and "v" not in df.columns:
+            df["volume"] = 0
+        elif "v" in df.columns:
+            df["volume"] = df["v"]
 
         # Add timestamp if missing
-        if 'timestamp' not in df.columns and 'time' not in df.columns:
-            df['timestamp'] = pd.date_range(end=datetime.now(), periods=len(df), freq='1min')
-        elif 'time' in df.columns:
-            df['timestamp'] = pd.to_datetime(df['time'], unit='s')
+        if "timestamp" not in df.columns and "time" not in df.columns:
+            df["timestamp"] = pd.date_range(end=datetime.now(), periods=len(df), freq="1min")
+        elif "time" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["time"], unit="s")
 
         # Select only needed columns in standard order
-        df = df[['open', 'high', 'low', 'close', 'volume', 'timestamp']].copy()
+        df = df[["open", "high", "low", "close", "volume", "timestamp"]].copy()
 
         # Ensure numeric types
-        for col in ['open', 'high', 'low', 'close', 'volume']:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        for col in ["open", "high", "low", "close", "volume"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # Drop any rows with NaN values
         df = df.dropna()
@@ -271,9 +293,9 @@ class DataProvider:
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
         return {
-            'cached_items': len(self._cache),
-            'cache_keys': list(self._cache.keys()),
-            'cache_dir': str(self.cache_dir),
+            "cached_items": len(self._cache),
+            "cache_keys": list(self._cache.keys()),
+            "cache_dir": str(self.cache_dir),
         }
 
 
@@ -291,7 +313,7 @@ class FeatureEngineer:
         Args:
             indicators: List of indicators to calculate (default: all)
         """
-        self.indicators = indicators or ['all']
+        self.indicators = indicators or ["all"]
         logger.info("FeatureEngineer initialized with indicators: %s", self.indicators)
 
     def add_features(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -319,25 +341,24 @@ class FeatureEngineer:
     def _add_custom_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Add custom derived features."""
         # Price position relative to recent range
-        if 'high' in df.columns and 'low' in df.columns:
-            recent_high = df['high'].rolling(window=20).max()
-            recent_low = df['low'].rolling(window=20).min()
+        if "high" in df.columns and "low" in df.columns:
+            recent_high = df["high"].rolling(window=20).max()
+            recent_low = df["low"].rolling(window=20).min()
             price_range = recent_high - recent_low
 
-            df['price_position'] = ((df['close'] - recent_low) / price_range).fillna(0.5)
+            df["price_position"] = ((df["close"] - recent_low) / price_range).fillna(0.5)
 
         # Volume ratio
-        if 'volume' in df.columns:
-            avg_volume = df['volume'].rolling(window=20).mean()
-            df['volume_ratio'] = (df['volume'] / avg_volume).fillna(1.0)
+        if "volume" in df.columns:
+            avg_volume = df["volume"].rolling(window=20).mean()
+            df["volume_ratio"] = (df["volume"] / avg_volume).fillna(1.0)
 
         # Candle patterns
-        df['candle_size'] = abs(df['close'] - df['open'])
-        df['upper_shadow'] = df['high'] - df[['open', 'close']].max(axis=1)
-        df['lower_shadow'] = df[['open', 'close']].min(axis=1) - df['low']
+        df["candle_size"] = abs(df["close"] - df["open"])
+        df["upper_shadow"] = df["high"] - df[["open", "close"]].max(axis=1)
+        df["lower_shadow"] = df[["open", "close"]].min(axis=1) - df["low"]
 
         return df
 
 
-__all__ = ['DataProvider', 'FeatureEngineer']
-
+__all__ = ["DataProvider", "FeatureEngineer"]

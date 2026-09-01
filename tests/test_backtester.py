@@ -2,9 +2,10 @@ import pandas as pd
 import pytest
 
 from nexus.backtest.backtester import Backtester
+from nexus.core.engine import NexusEngine
 from nexus.strategies.meta_strategy import MetaStrategy
 from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
-from nexus.core.engine import NexusEngine
+
 
 # --- Stubs reused (lightweight) ---
 class StubTransformer:
@@ -16,6 +17,7 @@ class StubTransformer:
             "features": {"trend_strength": 0.8, "volatility": 0.2, "momentum": 0.4},
         }
 
+
 class StubRLAgent:
     async def predict(self, data, asset, timeframe, regime):
         return {
@@ -25,25 +27,29 @@ class StubRLAgent:
             "features": {"trend_strength": 0.75, "volatility": 0.25, "momentum": 0.45},
         }
 
+
 class StubRegimeDetector:
     async def detect_regime(self, data):
         return "ranging"
+
 
 @pytest.mark.asyncio
 async def test_backtester_runs_and_collects_trades():
     # Build simple ascending OHLC data (placeholder)
     rows = 120
-    df = pd.DataFrame({
-        "open": [float(i) for i in range(rows)],
-        "close": [float(i)+0.5 for i in range(rows)],
-        "high": [float(i)+1 for i in range(rows)],
-        "low": [float(i)-1 for i in range(rows)],
-    })
+    df = pd.DataFrame(
+        {
+            "open": [float(i) for i in range(rows)],
+            "close": [float(i) + 0.5 for i in range(rows)],
+            "high": [float(i) + 1 for i in range(rows)],
+            "low": [float(i) - 1 for i in range(rows)],
+        }
+    )
 
     # Settings + engine
     settings = NexusSettings(
         quotex=QuotexSettings(email="stub@example.com", password="pw"),
-        trading=TradingSettings(base_trade_amount=5.0)
+        trading=TradingSettings(base_trade_amount=5.0),
     )
     engine = NexusEngine(settings=settings, demo_mode=True)
 

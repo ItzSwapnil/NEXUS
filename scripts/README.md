@@ -37,6 +37,14 @@ python scripts/verify_project.py
 - Virtual environment status
 - Dependency installation
 
+### 3. Test OTC Trades (`test_otc_trades.py`)
+
+Places 1 trade from practice/demo account across all available OTC markets to test order placement and broker response.
+
+```bash
+uv run python scripts/test_otc_trades.py [--amount 1.0] [--duration 60] [--direction call] [--delay 2.0] [--json]
+```
+
 ## Usage
 
 All scripts can be run directly:

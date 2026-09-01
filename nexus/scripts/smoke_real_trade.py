@@ -4,12 +4,13 @@
 - demo=True + NEXUS_DEMO_BROKER=true: attempts a real PRACTICE (demo) trade with Quotex.
 - demo=False: attempts a LIVE trade (best-effort, requires credentials/session).
 """
+
 from __future__ import annotations
 
 import argparse
 import asyncio
 import os
-from typing import Any, Dict, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from nexus.utils.config import load_config
 from nexus.utils.logger import get_nexus_logger
@@ -60,7 +61,9 @@ def _is_order_accepted(resp: Any) -> Tuple[bool, str]:
 
 
 # ---------- Simulated path ----------
-async def _simulate_demo(asset: str, amount: float, expiration: int, direction: str) -> Dict[str, Any]:
+async def _simulate_demo(
+    asset: str, amount: float, expiration: int, direction: str
+) -> Dict[str, Any]:
     return {
         "success": True,
         "asset": asset,
@@ -101,6 +104,7 @@ async def _real_practice_trade(
     try:
         import json
         from pathlib import Path
+
         p = Path("session.json")
         if p.exists():
             raw = json.loads(p.read_text(encoding="utf-8"))
@@ -151,7 +155,9 @@ async def _real_practice_trade(
     # Also add top payout assets as fallbacks
     try:
         assets_with_payouts = await adapter.get_assets_with_payouts_async()  # type: ignore[attr-defined]
-        assets_with_payouts = sorted(assets_with_payouts or [], key=lambda x: float(x.get("payout", 0.0)), reverse=True)[:10]
+        assets_with_payouts = sorted(
+            assets_with_payouts or [], key=lambda x: float(x.get("payout", 0.0)), reverse=True
+        )[:10]
         for item in assets_with_payouts:
             sym = str(item.get("symbol", "") or "").strip()
             for v in _variants(sym):
@@ -173,16 +179,20 @@ async def _real_practice_trade(
     for sym in candidates[:25]:
         for ex in exp_candidates:
             try:
-                raw = await adapter.buy_simple(asset=sym, amount=float(amount), direction=direction, duration=int(ex))  # type: ignore[attr-defined]
+                raw = await adapter.buy_simple(
+                    asset=sym, amount=float(amount), direction=direction, duration=int(ex)
+                )  # type: ignore[attr-defined]
                 accepted, reason = _is_order_accepted(raw)
-                attempts.append({"asset": sym, "expiration": ex, "accepted": accepted, "reason": reason})
+                attempts.append(
+                    {"asset": sym, "expiration": ex, "accepted": accepted, "reason": reason}
+                )
                 if not accepted:
                     best_error = reason
                     logger.debug(f"Rejected attempt {sym}@{ex}m: {reason}")
                     continue
                 # Fetch balance
                 try:
-                    balance = await adapter.get_balance()  # type: ignore[attr-defined]
+                    balance = await adapter.get_balance_async()
                 except Exception:
                     balance = 0.0
                 return {
@@ -222,9 +232,16 @@ async def run_trade(
     password_override: Optional[str],
 ) -> Dict[str, Any]:
     if demo:
-        use_broker_demo = os.getenv("NEXUS_DEMO_BROKER", "").strip().lower() in {"1", "true", "yes", "on"}
+        use_broker_demo = os.getenv("NEXUS_DEMO_BROKER", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         if use_broker_demo:
-            return await _real_practice_trade(asset, amount, expiration, direction, email_override, password_override)
+            return await _real_practice_trade(
+                asset, amount, expiration, direction, email_override, password_override
+            )
         return await _simulate_demo(asset, amount, expiration, direction)
 
     # LIVE path (best-effort)
@@ -238,7 +255,12 @@ async def run_trade(
     password = (cfg.quotex.password or "").strip()
 
     if QuotexAdapter is None:  # pragma: no cover
-        return {"success": False, "error": "Adapter unavailable", "asset": asset, "direction": direction}
+        return {
+            "success": False,
+            "error": "Adapter unavailable",
+            "asset": asset,
+            "direction": direction,
+        }
 
     adapter = QuotexAdapter(email=email, password=password, demo_mode=False)  # type: ignore[call-arg]
 
@@ -246,6 +268,7 @@ async def run_trade(
     try:
         import json
         from pathlib import Path
+
         p = Path("session.json")
         if p.exists():
             raw = json.loads(p.read_text(encoding="utf-8"))
@@ -273,7 +296,9 @@ async def run_trade(
         return {"success": False, "error": "Login failed", "asset": asset, "direction": direction}
 
     try:
-        raw = await adapter.buy_simple(asset=asset, amount=float(amount), direction=direction, duration=int(expiration))  # type: ignore[attr-defined]
+        raw = await adapter.buy_simple(
+            asset=asset, amount=float(amount), direction=direction, duration=int(expiration)
+        )  # type: ignore[attr-defined]
         accepted, reason = _is_order_accepted(raw)
         return {
             "success": bool(accepted),
@@ -287,7 +312,12 @@ async def run_trade(
             "reason": reason,
         }
     except Exception as e:
-        return {"success": False, "error": f"Trade error: {e}", "asset": asset, "direction": direction}
+        return {
+            "success": False,
+            "error": f"Trade error: {e}",
+            "asset": asset,
+            "direction": direction,
+        }
 
 
 # ---------- CLI ----------
@@ -300,7 +330,11 @@ def _cli() -> None:  # pragma: no cover
     p.add_argument("--demo", action="store_true")
     p.add_argument("--email")
     p.add_argument("--password")
-    p.add_argument("--broker-demo", action="store_true", help="Use real broker practice mode when --demo is set")
+    p.add_argument(
+        "--broker-demo",
+        action="store_true",
+        help="Use real broker practice mode when --demo is set",
+    )
     args = p.parse_args()
 
     if args.broker_demo:

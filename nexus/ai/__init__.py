@@ -8,20 +8,22 @@ This module contains actual AI/ML implementations:
 """
 
 try:
-    from nexus.ai.lstm_predictor import LSTMPredictor, MarketPredictor
     from nexus.ai.deep_rl_agent import DeepRLAgent, DuelingDQN
     from nexus.ai.ensemble_manager import AIEnsembleManager
+    from nexus.ai.lstm_predictor import LSTMPredictor, MarketPredictor
 
     __all__ = [
-        'LSTMPredictor',
-        'MarketPredictor',
-        'DeepRLAgent',
-        'DuelingDQN',
-        'AIEnsembleManager',
+        "LSTMPredictor",
+        "MarketPredictor",
+        "DeepRLAgent",
+        "DuelingDQN",
+        "AIEnsembleManager",
     ]
 except ImportError as e:
     # PyTorch not installed - AI features disabled
     import warnings
-    warnings.warn(f"AI features unavailable: {e}. Install PyTorch to enable AI models.")
-    __all__ = []
 
+    warnings.warn(
+        f"AI features unavailable: {e}. Install PyTorch to enable AI models.", stacklevel=2
+    )
+    __all__ = []

@@ -2,11 +2,13 @@
 
 Provides a simple in-memory replay buffer and placeholder learning hook.
 """
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Deque, Any, Dict
 from collections import deque
+from dataclasses import dataclass
+from typing import Any, Deque, Dict
+
 import numpy as np
 
 
@@ -26,8 +28,12 @@ class RLAgent:
         self.buffer_capacity = buffer_capacity
         self.memory: Deque[Transition] = deque(maxlen=buffer_capacity)
 
-    def store_transition(self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, done: bool) -> None:
-        self.memory.append(Transition(state=state, action=action, reward=reward, next_state=next_state, done=done))
+    def store_transition(
+        self, state: np.ndarray, action: int, reward: float, next_state: np.ndarray, done: bool
+    ) -> None:
+        self.memory.append(
+            Transition(state=state, action=action, reward=reward, next_state=next_state, done=done)
+        )
 
     def learn_from_trade(self, trade_result: Dict[str, Any]) -> None:
         """Record trade result as a transition. Placeholder for learning logic."""
@@ -48,4 +54,3 @@ class RLAgent:
 
 
 __all__ = ["RLAgent"]
-

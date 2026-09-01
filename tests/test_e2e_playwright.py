@@ -2,6 +2,7 @@ import pytest
 
 try:
     from playwright.sync_api import sync_playwright  # type: ignore
+
     PLAYWRIGHT_AVAILABLE = True
 except Exception:  # pragma: no cover
     PLAYWRIGHT_AVAILABLE = False

@@ -8,19 +8,27 @@ Demotions:
   micro-live -> shadow on consecutive failures
   champion -> micro-live on underperformance (simplified placeholder)
 """
+
 from __future__ import annotations
-from typing import Callable, Optional, Dict
+
+from typing import Callable, Dict, Optional
+
 from nexus.utils.config import NexusSettings
+
 from .fitness import CandidateState
 
 PromotionCallback = Callable[[CandidateState, str, str], None]
 ViolationCallback = Callable[[CandidateState, str], None]
 
+
 class PromotionManager:
-    def __init__(self, settings: NexusSettings,
-                 on_promotion: Optional[PromotionCallback] = None,
-                 on_demotion: Optional[PromotionCallback] = None,
-                 on_violation: Optional[ViolationCallback] = None):
+    def __init__(
+        self,
+        settings: NexusSettings,
+        on_promotion: Optional[PromotionCallback] = None,
+        on_demotion: Optional[PromotionCallback] = None,
+        on_violation: Optional[ViolationCallback] = None,
+    ):
         self.settings = settings
         self.on_promotion = on_promotion
         self.on_demotion = on_demotion
@@ -49,11 +57,18 @@ class PromotionManager:
             candidate.promotion_windows_ok = 0
 
         # Shadow -> Micro-Live
-        if candidate.lifecycle == "shadow" and candidate.promotion_windows_ok >= cfg.promotion_windows:
+        if (
+            candidate.lifecycle == "shadow"
+            and candidate.promotion_windows_ok >= cfg.promotion_windows
+        ):
             self._promote(candidate, "micro-live")
 
         # Micro-Live -> Champion (simplified: sustain 2x windows threshold + high fitness)
-        elif candidate.lifecycle == "micro-live" and candidate.promotion_windows_ok >= (cfg.promotion_windows * 2) and candidate.fitness >= (threshold + 0.1):
+        elif (
+            candidate.lifecycle == "micro-live"
+            and candidate.promotion_windows_ok >= (cfg.promotion_windows * 2)
+            and candidate.fitness >= (threshold + 0.1)
+        ):
             self._promote(candidate, "champion")
 
         # Demotions for under-performance
@@ -90,5 +105,5 @@ class PromotionManager:
         if self.on_demotion:
             self.on_demotion(c, prev, new_state)
 
-__all__ = ["PromotionManager"]
 
+__all__ = ["PromotionManager"]

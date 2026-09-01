@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NEXUS | Trading Terminal</title>
+  <link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/controls.css"><link rel="stylesheet" href="/static/ui-fix.css"><link rel="stylesheet" href="/static/chart.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar"><div><span class="eyebrow">NEXUS / CONTROL PLANE</span><h1>AI Trading Terminal</h1></div><div id="connection" class="pill offline">CONNECTING</div></header>
+    <section class="metrics"><article><span>Account</span><strong id="mode">—</strong></article><article><span>Balance</span><strong id="balance">—</strong></article><article><span>Active trades</span><strong id="active">—</strong></article><article><span>Net P&amp;L</span><strong id="pnl">—</strong></article></section>
+    <section class="grid"><article class="panel wide"><div class="panel-head"><div><span class="eyebrow">MARKET INTELLIGENCE</span><h2>Live market graph</h2></div><div class="control-row"><select id="marketSelect"><option>Loading markets…</option></select><select id="chartTimeframe"><option value="60">1m</option><option value="300">5m</option><option value="900">15m</option><option value="3600">1h</option></select></div></div><canvas id="chart" height="300"></canvas><div id="analysis" class="analysis muted">Select a market to analyze live broker candles.</div></article><article class="panel"><span class="eyebrow">CONTROLS</span><h2>Account &amp; execution</h2><div class="control-row"><label>Account<select id="modeSelect"><option value="PRACTICE">PRACTICE</option><option value="REAL">REAL</option></select></label><button id="modeButton">Switch</button></div><div class="control-row"><button id="pauseButton">Resume trading</button><button id="panicButton" class="danger">Panic stop</button></div><label class="check"><input id="aiTimeframe" type="checkbox"> AI selects timeframe</label><label>Minimum confidence<input id="confidence" type="range" min="50" max="99" value="70"><output id="confidenceOut">70%</output></label><label>Payout threshold<input id="payout" type="number" min="0" max="100" step="1"><span>%</span></label><label>Max open trades<input id="maxOpen" type="number" min="1" max="20"></label><button id="saveControls">Save controls</button><hr><button id="clearHistory" class="danger">Clear resolved history</button><button id="clearAllHistory" class="danger">Clear all history</button><p id="notice" class="muted small"></p></article></section>
+    <section class="panel ledger"><div class="panel-head"><div><span class="eyebrow">BROKER LEDGER</span><h2>Live trade reconciliation</h2></div></div><div class="table-wrap"><table><thead><tr><th>Asset</th><th>Direction</th><th>Amount</th><th>Status</th><th>Outcome</th><th>P&amp;L</th><th>Broker ID</th></tr></thead><tbody id="trades"><tr><td colspan="7" class="empty">Waiting for broker data…</td></tr></tbody></table></div></section>
+  </main><button id="refresh" class="hidden-refresh">Refresh</button><script src="/static/app.js"></script>
+</body></html>

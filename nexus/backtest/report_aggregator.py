@@ -12,12 +12,14 @@ Where normalization heuristics:
 
 Intended as an interim layer before full evolutionary pipeline.
 """
+
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Any
-import json
+from typing import Any, Dict, List
+
 
 @dataclass
 class ReportEntry:
@@ -31,6 +33,7 @@ class ReportEntry:
     exploratory_trades: int
     score: float
 
+
 DEFAULT_WEIGHTS = {
     "w_profit": 0.4,
     "w_pf": 0.25,
@@ -43,7 +46,9 @@ def _clip(x: float, lo: float, hi: float) -> float:
     return lo if x < lo else hi if x > hi else x
 
 
-def compute_score(summary: Dict[str, Any], base_trade_amount: float, weights: Dict[str, float] | None = None) -> float:
+def compute_score(
+    summary: Dict[str, Any], base_trade_amount: float, weights: Dict[str, float] | None = None
+) -> float:
     w = weights or DEFAULT_WEIGHTS
     total_profit = float(summary.get("total_profit", 0.0))
     win_rate = float(summary.get("win_rate", 0.0))
@@ -56,15 +61,17 @@ def compute_score(summary: Dict[str, Any], base_trade_amount: float, weights: Di
     norm_dd = _clip(max_dd / 50.0, 0.0, 1.0)
 
     score = (
-        w["w_profit"] * norm_profit +
-        w["w_pf"] * norm_pf +
-        w["w_win"] * win_rate -
-        w["w_dd"] * norm_dd
+        w["w_profit"] * norm_profit
+        + w["w_pf"] * norm_pf
+        + w["w_win"] * win_rate
+        - w["w_dd"] * norm_dd
     )
     return round(score, 6)
 
 
-def aggregate_reports(reports_dir: str | Path = "reports", base_trade_amount: float = 5.0) -> List[ReportEntry]:
+def aggregate_reports(
+    reports_dir: str | Path = "reports", base_trade_amount: float = 5.0
+) -> List[ReportEntry]:
     p = Path(reports_dir)
     if not p.exists():
         return []
@@ -76,22 +83,24 @@ def aggregate_reports(reports_dir: str | Path = "reports", base_trade_amount: fl
             meta = raw.get("meta", {})
             asset = meta.get("asset", "unknown")
             score = compute_score(summary, base_trade_amount)
-            entries.append(ReportEntry(
-                path=file,
-                asset=asset,
-                total_trades=int(summary.get("total_trades", 0)),
-                total_profit=float(summary.get("total_profit", 0.0)),
-                win_rate=float(summary.get("win_rate", 0.0)),
-                max_drawdown=float(summary.get("max_drawdown", 0.0)),
-                profit_factor=float(summary.get("profit_factor", 0.0)),
-                exploratory_trades=int(summary.get("exploratory_trades", 0)),
-                score=score,
-            ))
+            entries.append(
+                ReportEntry(
+                    path=file,
+                    asset=asset,
+                    total_trades=int(summary.get("total_trades", 0)),
+                    total_profit=float(summary.get("total_profit", 0.0)),
+                    win_rate=float(summary.get("win_rate", 0.0)),
+                    max_drawdown=float(summary.get("max_drawdown", 0.0)),
+                    profit_factor=float(summary.get("profit_factor", 0.0)),
+                    exploratory_trades=int(summary.get("exploratory_trades", 0)),
+                    score=score,
+                )
+            )
         except Exception:
             continue
     # Sort by score descending then profit
     entries.sort(key=lambda e: (e.score, e.total_profit), reverse=True)
     return entries
 
-__all__ = ["ReportEntry", "aggregate_reports", "compute_score"]
 
+__all__ = ["ReportEntry", "aggregate_reports", "compute_score"]

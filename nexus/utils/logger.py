@@ -12,21 +12,22 @@ Enhancements:
 - Comprehensive typing improvements
 """
 
+import json
 import logging
 import logging.handlers
-import json
 import os
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
-from dataclasses import dataclass
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 # Optional rich import
 try:  # pragma: no cover - environment dependent
     from rich.console import Console  # type: ignore
     from rich.logging import RichHandler  # type: ignore
+
     _HAS_RICH = True
 except ImportError:  # pragma: no cover
     Console = None  # type: ignore
@@ -36,6 +37,7 @@ except ImportError:  # pragma: no cover
 # Optional loguru import
 try:  # pragma: no cover - environment dependent
     from loguru import logger as loguru_logger  # type: ignore
+
     _HAS_LOGURU = True
 except ImportError:  # pragma: no cover
     loguru_logger = None  # type: ignore
@@ -43,9 +45,11 @@ except ImportError:  # pragma: no cover
 
 console = Console() if _HAS_RICH else None
 
+
 @dataclass
 class LogConfig:
     """Logging configuration container."""
+
     level: str = "INFO"
     console_output: bool = True
     file_output: bool = True
@@ -76,7 +80,10 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
     if config.console_output:
         if _HAS_RICH and (RichHandler is not None):
             console_handler: logging.Handler = RichHandler(
-                rich_tracebacks=True, markup=True, show_time=False, show_path=False  # type: ignore[arg-type]
+                rich_tracebacks=True,
+                markup=True,
+                show_time=False,
+                show_path=False,  # type: ignore[arg-type]
             )
         else:
             console_handler = logging.StreamHandler()
@@ -108,7 +115,9 @@ def setup_nexus_logging(config: Optional[LogConfig] = None) -> logging.Logger:
                     ]
                 )
             except Exception:  # pragma: no cover
-                root_logger.debug("Loguru performance sink configuration failed; continuing without it")
+                root_logger.debug(
+                    "Loguru performance sink configuration failed; continuing without it"
+                )
 
     return root_logger
 
@@ -213,7 +222,9 @@ class MetricsCollector:
         self.metrics: Dict[str, Dict[str, Any]] = {}
         self.start_time: float = time.time()
 
-    def record_metric(self, name: str, value: Union[int, float], tags: Optional[Dict[str, Any]] = None) -> None:
+    def record_metric(
+        self, name: str, value: Union[int, float], tags: Optional[Dict[str, Any]] = None
+    ) -> None:
         timestamp = time.time()
         self.metrics[name] = {
             "value": value,
@@ -244,7 +255,10 @@ __all__ = [
 # Backward-compatible shim expected by older call sites
 from typing import Optional as _Optional  # noqa: E402
 
-def setup_logging(level: _Optional[str] = None, log_dir: _Optional[Union[str, Path]] = None):  # pragma: no cover
+
+def setup_logging(
+    level: _Optional[str] = None, log_dir: _Optional[Union[str, Path]] = None
+):  # pragma: no cover
     """Compatibility wrapper around setup_nexus_logging.
     Args:
         level: log level name (e.g., "INFO"). If None, uses env NEXUS_LOG_LEVEL or default in LogConfig.
@@ -258,6 +272,7 @@ def setup_logging(level: _Optional[str] = None, log_dir: _Optional[Union[str, Pa
         log_dir=Path(log_dir) if log_dir else LogConfig.log_dir,
     )
     return setup_nexus_logging(cfg)
+
 
 # Extend exports
 __all__.append("setup_logging")
