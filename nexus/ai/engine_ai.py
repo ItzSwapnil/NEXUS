@@ -19,7 +19,7 @@ import json
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -33,6 +33,7 @@ from nexus.intelligence.regime_detector import RegimeDetector
 from nexus.intelligence.transformer import MarketPredictor
 from nexus.risk.position_sizer import DrawdownProtection, KellyPositionSizer
 from nexus.strategies.meta_strategy import MetaStrategy, SignalType, TradingSignal
+from nexus.utils.device import get_best_device
 from nexus.utils.logger import get_nexus_logger
 from nexus.utils.technical import available_indicator_catalog, calculate_features
 
@@ -74,24 +75,26 @@ class RealAITradingEngine:
     """Production AI Engine orchestrating deep learning models, multi-timeframe confluence, and risk management."""
 
     def __init__(self, device: Optional[str] = None) -> None:
+        runtime_device = device or get_best_device()
         self.regime_detector = RegimeDetector()
         self.transformer_predictor = MarketPredictor(
-            lookback_periods=30, feature_dim=20, device=device
+            lookback_periods=30, feature_dim=20, device=runtime_device
         )
 
         input_dim = 20
-        self.lstm_model = (
-            LSTMPredictor(input_dim=input_dim, hidden_dim=64, num_layers=2)
-            if hasattr(LSTMPredictor, "__init__") and not isinstance(LSTMPredictor, type(object))
-            else None
-        )
+        try:
+            self.lstm_model = LSTMPredictor(input_dim=input_dim, hidden_dim=64, num_layers=2)
+        except (ImportError, RuntimeError, TypeError):
+            self.lstm_model = None
+        if self.lstm_model is not None and hasattr(self.lstm_model, "to"):
+            self.lstm_model = self.lstm_model.to(runtime_device)
         self.lstm_trainer = (
-            LSTMTrainer(self.lstm_model)
+            LSTMTrainer(self.lstm_model, device=runtime_device)
             if self.lstm_model and hasattr(self.lstm_model, "parameters")
             else None
         )
 
-        self.rl_agent = DeepRLAgent(state_dim=15, action_dim=3)
+        self.rl_agent = DeepRLAgent(state_dim=15, action_dim=3, device=runtime_device)
         self.checkpoint_manager = ModelCheckpointManager(checkpoint_dir=str(MODELS_DIR))
 
         # Restore saved weights if present
@@ -148,10 +151,35 @@ class RealAITradingEngine:
             for class_id, probability in zip(classes, probabilities, strict=True):
                 probs[{1: "call", 2: "put", 0: "hold"}.get(class_id, "hold")] = float(probability)
             signal = max(probs, key=probs.get)
+            raw_confidence = float(probs[signal])
+            calibrated_confidence = raw_confidence
+            calibration_bands = artifact.get("confidence_bands", [])
+            for band in calibration_bands:
+                if float(band.get("lower", 0.0)) <= raw_confidence < float(band.get("upper", 1.01)):
+                    samples = int(band.get("trades", 0))
+                    if samples >= 5:
+                        # Shrink empirical hit rate toward the model score so
+                        # a small validation sample cannot create false
+                        # certainty.  The validation data is strictly later
+                        # than the fitting data.
+                        calibrated_confidence = (
+                            int(band.get("wins", 0)) + raw_confidence * 20.0
+                        ) / (samples + 20.0)
+                    break
+            if signal in {"call", "put"} and calibrated_confidence != raw_confidence:
+                remainder = max(0.0, 1.0 - calibrated_confidence)
+                other_total = sum(value for key, value in probs.items() if key != signal)
+                if other_total > 0:
+                    for key in probs:
+                        if key != signal:
+                            probs[key] = probs[key] / other_total * remainder
+                probs[signal] = calibrated_confidence
             return {
                 "status": "active",
                 "signal": signal,
                 "confidence": round(float(probs[signal]), 4),
+                "raw_confidence": round(raw_confidence, 4),
+                "calibrated_confidence": round(float(calibrated_confidence), 4),
                 "probabilities": probs,
                 "trained_at": artifact.get("trained_at"),
                 "validation_accuracy": artifact.get("validation_accuracy"),
@@ -207,6 +235,26 @@ class RealAITradingEngine:
         stats.setdefault("recent_results", [])
         stats.setdefault("strategy_lifecycle", "challenger")
         return stats
+
+    def _calibrate_ensemble_confidence(self, asset: str, raw_confidence: float) -> float:
+        """Map ensemble scores to observed out-of-sample win rates for a market."""
+        value = max(0.0, min(1.0, float(raw_confidence)))
+        bands = self.get_dynamic_asset_params(asset).get("ensemble_confidence_bands", [])
+        for band in bands:
+            lower = float(band.get("lower", 0.0))
+            upper = float(band.get("upper", 1.01))
+            samples = int(band.get("trades", 0))
+            if lower <= value < upper and samples >= 5:
+                # Twenty virtual observations prevent a small replay from
+                # turning one lucky streak into a falsely precise probability.
+                return max(
+                    0.0,
+                    min(
+                        1.0,
+                        (int(band.get("wins", 0)) + value * 20.0) / (samples + 20.0),
+                    ),
+                )
+        return value
 
     def live_risk_gate(
         self, asset: str, analysis: Dict[str, Any], min_confidence: float = 0.70
@@ -386,16 +434,27 @@ class RealAITradingEngine:
             logger.debug(f"RL agent action selection note: {e}")
 
         # 6. AI Ensemble Combination
+        # Preserve the transformer's actual class probabilities.  Replacing
+        # them with a fixed 0.70/0.30 vote makes the displayed confidence a
+        # heuristic score instead of evidence-backed model output.
+        transformer_probs = transformer_res.get("probabilities", {})
+        if not isinstance(transformer_probs, dict):
+            transformer_probs = {}
+        transformer_probs = {
+            key: max(0.0, float(transformer_probs.get(key, 0.0)))
+            for key in ("call", "put", "hold")
+        }
+        transformer_total = sum(transformer_probs.values())
+        if transformer_total <= 0.0:
+            transformer_probs = {"call": 1 / 3, "put": 1 / 3, "hold": 1 / 3}
+        else:
+            transformer_probs = {
+                key: value / transformer_total for key, value in transformer_probs.items()
+            }
         ensemble_res = self.ensemble_manager.combine_predictions(
-            transformer_pred={
-                "probabilities": {
-                    "call": 0.7 if trans_signal == "call" else 0.3,
-                    "put": 0.7 if trans_signal == "put" else 0.3,
-                    "hold": 0.1,
-                }
-            },
+            transformer_pred={"probabilities": transformer_probs},
             lstm_pred=lstm_res,
-            rl_pred={"action": rl_action_str},
+            rl_pred={"action": rl_action_str, "confidence": rl_conf},
             market_model_pred=(market_model_res if market_model_res.get("status") == "active" else None),
             regime=regime,
         )
@@ -404,7 +463,8 @@ class RealAITradingEngine:
         if final_signal not in ("call", "put"):
             final_signal = trans_signal if trans_signal in ("call", "put") else "call"
 
-        confidence = float(ensemble_res.get("confidence", 0.75))
+        raw_confidence = float(ensemble_res.get("confidence", 0.0))
+        confidence = self._calibrate_ensemble_confidence(asset, raw_confidence)
 
         # 7. AI Dynamic Expiration Timeframe Selection (OTC: 5s to 900s / 15m; Real: 60s / 1m to 900s / 15m)
         atr = float(last_row.get("atr", 1.0))
@@ -456,6 +516,8 @@ class RealAITradingEngine:
         return {
             "signal": final_signal,
             "confidence": round(confidence, 4),
+            "raw_confidence": round(raw_confidence, 4),
+            "confidence_type": "market-specific out-of-sample calibrated estimate",
             "regime": regime,
             "recommended_expiration": recommended_expiration,
             "reasoning": reasoning,
@@ -482,6 +544,7 @@ class RealAITradingEngine:
         success: bool,
         profit: float,
         analysis: Dict[str, Any],
+        persist: bool = True,
     ) -> Dict[str, Any]:
         """Perform continuous online learning, updating ensemble weights, experience buffer & neural models."""
         reward = 1.0 if success else -1.0
@@ -531,15 +594,16 @@ class RealAITradingEngine:
 
         # 4. Save model checkpoints and update risk controls
         self.drawdown_protection.record_trade_outcome(is_win=success)
-        try:
-            self.checkpoint_manager.save_checkpoint(
-                transformer_model=getattr(self.transformer_predictor, "model", None),
-                bilstm_model=self.lstm_model,
-                rl_agent=self.rl_agent,
-                ensemble_weights=self.ensemble_manager.weights,
-            )
-        except Exception as e:
-            logger.warning("Could not save model checkpoints: %s", e)
+        if persist:
+            try:
+                self.checkpoint_manager.save_checkpoint(
+                    transformer_model=getattr(self.transformer_predictor, "model", None),
+                    bilstm_model=self.lstm_model,
+                    rl_agent=self.rl_agent,
+                    ensemble_weights=self.ensemble_manager.weights,
+                )
+            except Exception as e:
+                logger.warning("Could not save model checkpoints: %s", e)
 
         # 5. Dynamic AI Indicator Parameter Adaptation & Learning
         import random
@@ -578,7 +642,8 @@ class RealAITradingEngine:
         astats["win_rate"] = round(astats["wins"] / astats["trades"], 4)
         if astats["trades"] >= 10:
             astats["strategy_lifecycle"] = "champion" if astats["win_rate"] >= 0.55 else "shadow"
-        self._save_asset_stats()
+        if persist:
+            self._save_asset_stats()
 
         self.trade_history.append(
             {
@@ -601,8 +666,18 @@ class RealAITradingEngine:
             "asset_stats": astats,
         }
 
-    def train_market(self, asset: str, candles_df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+    def train_market(
+        self,
+        asset: str,
+        candles_df: Optional[pd.DataFrame] = None,
+        progress_callback: Callable[[str, float, str], None] | None = None,
+    ) -> Dict[str, Any]:
         """Perform dedicated per-market AI model training and dynamic best indicator selection."""
+        def report(stage: str, progress: float, detail: str) -> None:
+            if progress_callback is not None:
+                progress_callback(stage, max(0.0, min(1.0, progress)), detail)
+
+        report("preparing", 0.02, "Preparing broker candles")
         if candles_df is None or len(candles_df) < 30:
             candles_df = generate_synthetic_candles(asset, count=150)
 
@@ -626,7 +701,8 @@ class RealAITradingEngine:
         best_score = -1.0
         best_p = candidate_params[grid_idx]
 
-        for p in candidate_params:
+        for index, p in enumerate(candidate_params, start=1):
+            report("indicator screening", 0.05 + index / len(candidate_params) * 0.25, f"Testing indicator profile {index}/{len(candidate_params)}")
             df_cand = calculate_features(candles_df, asset=asset, custom_params=p)
             conf_series = df_cand.get("confluence_score", pd.Series(np.zeros(len(df_cand))))
             conf_score = conf_series.to_numpy()[:-1]
@@ -689,6 +765,7 @@ class RealAITradingEngine:
         astats["accuracy_basis"] = accuracy_basis
         astats["training_samples"] = int(len(returns))
         astats["trained_at"] = datetime.now().isoformat()
+        report("feature generation", 0.35, "Generating the broad TA provider feature set")
         feature_frame = calculate_features(candles_df, asset=asset, custom_params=best_p)
         raw_columns = {"open", "high", "low", "close", "volume"}
         candidate_columns = [
@@ -712,6 +789,10 @@ class RealAITradingEngine:
         feature_names = [column for _, column in scores[:32]]
         if not feature_names:
             feature_names = candidate_columns[:20]
+        from nexus.research import AdaptiveResearchEngine
+
+        report("candidate research", 0.55, "Ranking features and validating guided combinations")
+        research = AdaptiveResearchEngine().run(feature_frame, asset=asset, timeframe=60)
         validation_accuracy = None
         validation_baseline = None
         model_status = "untrained"
@@ -722,19 +803,46 @@ class RealAITradingEngine:
             model_frame = feature_frame[feature_names].iloc[:-1].replace([np.inf, -np.inf], np.nan)
             fill_values = model_frame.median(numeric_only=True).to_dict()
             model_frame = model_frame.fillna(fill_values).fillna(0.0)
-            labels = np.where(returns > 0.001, 1, np.where(returns < -0.001, 2, 0))
+            movement_threshold = float(np.median(np.abs(returns)) * 0.5) if len(returns) else 0.001
+            movement_threshold = min(0.001, max(0.00001, movement_threshold))
+            labels = np.where(
+                returns > movement_threshold, 1,
+                np.where(returns < -movement_threshold, 2, 0),
+            )
             split = max(20, int(len(model_frame) * 0.8))
+            report("market model fitting", 0.72, "Fitting the market-specific validation model")
             if split < len(model_frame) and len(np.unique(labels[:split])) >= 2:
                 model = HistGradientBoostingClassifier(
                     learning_rate=0.05, max_iter=100, max_leaf_nodes=15,
                     l2_regularization=1.0, random_state=sym_hash,
                 )
                 model.fit(model_frame.iloc[:split], labels[:split])
-                validation_accuracy = round(float(model.score(model_frame.iloc[split:], labels[split:])) * 100.0, 1)
+                validation_values = model_frame.iloc[split:]
+                validation_labels = labels[split:]
+                validation_probabilities = model.predict_proba(validation_values)
+                validation_classes = [int(value) for value in model.classes_]
+                validation_predictions = np.asarray(validation_classes)[np.argmax(validation_probabilities, axis=1)]
+                validation_accuracy = round(float(np.mean(validation_predictions == validation_labels)) * 100.0, 1)
                 validation_baseline = round(
-                    float(np.bincount(labels[split:]).max() / max(1, len(labels[split:]))) * 100.0,
+                    float(np.bincount(validation_labels).max() / max(1, len(validation_labels))) * 100.0,
                     1,
                 )
+                confidence_bands = []
+                for lower, upper in ((0.50, 0.60), (0.60, 0.70), (0.70, 0.80), (0.80, 0.90), (0.90, 1.01)):
+                    band_rows = []
+                    for row_probs, prediction, actual in zip(
+                        validation_probabilities, validation_predictions, validation_labels, strict=True
+                    ):
+                        row_confidence = float(np.max(row_probs))
+                        if prediction in (1, 2) and lower <= row_confidence < upper:
+                            band_rows.append(int(prediction == actual))
+                    confidence_bands.append({
+                        "lower": lower,
+                        "upper": upper,
+                        "trades": len(band_rows),
+                        "wins": sum(band_rows),
+                        "win_rate": round(sum(band_rows) / len(band_rows), 4) if band_rows else None,
+                    })
                 # With an 80% payout, a direction needs more than 55.56%
                 # wins just to break even. Do not promote a model that fails
                 # both that economic hurdle and the temporal baseline.
@@ -755,6 +863,7 @@ class RealAITradingEngine:
                         "validation_baseline": validation_baseline,
                         "promotion_status": promotion_status,
                         "training_samples": int(split),
+                        "confidence_bands": confidence_bands,
                     },
                     self._market_model_path(asset),
                 )
@@ -768,6 +877,8 @@ class RealAITradingEngine:
         astats["market_model_status"] = model_status
         astats["validation_accuracy"] = validation_accuracy
         astats["validation_baseline"] = validation_baseline
+        astats["confidence_bands"] = confidence_bands if "confidence_bands" in locals() else []
+        astats["research"] = research.as_dict()
         self._save_asset_stats()
 
         blueprint = {
@@ -782,6 +893,8 @@ class RealAITradingEngine:
             "market_model_status": model_status,
             "validation_accuracy": validation_accuracy,
             "validation_baseline": validation_baseline,
+            "confidence_bands": astats["confidence_bands"],
+            "research": research.as_dict(),
             "description": f"Independently trained for {asset} at exact moment (Accuracy: {accuracy_pct}%).",
             "params": best_p,
             "generation": astats["generation"],
@@ -790,6 +903,7 @@ class RealAITradingEngine:
         from nexus.utils.technical import register_trained_market_blueprint
 
         register_trained_market_blueprint(asset, blueprint)
+        report("complete", 1.0, f"Training complete; generation {astats['generation']}")
 
         logger.info(
             f"⚡ Per-Market AI Training Completed for {asset} -> Gen {astats['generation']} | "

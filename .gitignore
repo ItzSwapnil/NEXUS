@@ -96,7 +96,9 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+# Local environment files may contain API keys, broker credentials, and tokens.
+.env*
+!.env.example
 .venv
 env/
 venv/
@@ -140,16 +142,56 @@ dmypy.json
 .DS_Store
 Thumbs.db
 
+# Secrets and private local configuration
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+*.secret
+*.secrets
+*.token
+credentials.*
+secrets.*
+*_credentials.*
+*_secrets.*
+
+# Temporary files and local runtime state
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.orig
+*.rej
+*.pid
+*.sock
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.jsonl
+
 # NEXUS specific
-logs/*.log
+logs/*
 !logs/.gitkeep
 data/*
 !data/README.md
-models/*.json
 !models/README.md
+models/**/*.json
+models/**/*.joblib
+models/**/*.pkl
+models/**/*.pt
+models/**/*.pth
+models/**/*.h5
+models/**/*.onnx
 models/transformer/*
 !models/transformer/.gitkeep
-reports/*.json
+reports/*
+!reports/.gitkeep
 session.json
 runtime_settings.json
 *.pkl
@@ -161,4 +203,3 @@ runtime_settings.json
 uv.lock
 poetry.lock
 Pipfile.lock
-

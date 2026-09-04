@@ -43,9 +43,35 @@ def setup_environment() -> None:
     logger.info("NEXUS environment initialized")
 
 
-async def launch_web_mode(engine: NexusEngine, host: str, port: int) -> None:
+async def launch_web_mode(
+    engine: NexusEngine, host: str, port: int, config_path: str | None = None
+) -> None:
     """Launch the browser dashboard and its engine-backed API."""
     try:
+        os.environ["NEXUS_SERVER_PID"] = str(os.getpid())
+        if os.getenv("NEXUS_WEB_SERVER", "granian").lower() == "granian":
+            from granian import Granian
+            from granian.constants import Interfaces
+
+            os.environ["NEXUS_WEB_DEMO"] = "1" if engine.demo_mode else "0"
+            if config_path:
+                os.environ["NEXUS_CONFIG_PATH"] = config_path
+            logger.info("Launching NEXUS dashboard with Granian ASGI server")
+            server = Granian(
+                "nexus.web.granian_entry:create_granian_app",
+                address=host,
+                port=port,
+                interface=Interfaces.ASGI,
+                workers=1,
+                runtime_threads=1,
+                websockets=True,
+                log_level="info",
+                factory=True,
+            )
+            # Granian installs signal handlers during startup and therefore
+            # must be served from the interpreter's main thread.
+            server.serve()
+            return
         from uvicorn import Config, Server
 
         from nexus.web.app import create_app
@@ -306,7 +332,7 @@ Examples:
     # Launch appropriate mode
     try:
         if args.web or args.gui:
-            await launch_web_mode(engine, args.host, args.port)
+            await launch_web_mode(engine, args.host, args.port, args.config)
         elif args.cli:
             await launch_cli_mode(args)
         elif args.autonomous:

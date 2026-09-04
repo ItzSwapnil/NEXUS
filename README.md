@@ -119,6 +119,8 @@ MAX_DAILY_LOSS=500.0
 USE_KELLY_CRITERION=true
 ```
 
+`.env` is for local credentials and must never be committed. Use `.env.example` as the safe configuration template. Generated logs, reports, cached market data, runtime state, and trained model artifacts are also kept out of Git; see [data/README.md](data/README.md) and [models/README.md](models/README.md).
+
 ---
 
 ## 📖 **Usage**
@@ -230,4 +232,3 @@ If you find this project helpful, please:
 ---
 
 **Built with ❤️ for the algorithmic trading community**
-

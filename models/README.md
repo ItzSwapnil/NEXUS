@@ -1,6 +1,6 @@
 # Models Directory
 
-This directory stores trained AI models and their configurations for NEXUS.
+This directory stores trained AI models and their configurations for NEXUS. Model files are generated locally and are intentionally excluded from Git because they can be large, frequently changing, and may contain proprietary training results.
 
 ## Structure
 
@@ -76,7 +76,7 @@ agent = DQNAgent.load("models/dqn_agent.pth")
 Models are versioned by:
 - Timestamp in filename (e.g., `lstm_predictor_20251007.pth`)
 - Version metadata stored in model file
-- Git commits for tracking changes
+- An external artifact store or backup, rather than Git
 
 ## Best Practices
 
@@ -88,7 +88,7 @@ Models are versioned by:
 
 ## Notes
 
-- Model files are excluded from Git (large binary files)
+- Model files (`.pt`, `.pth`, `.joblib`, `.pkl`, `.h5`, `.onnx`) and generated model metadata are excluded from Git
 - Store production models securely
 - Retrain periodically as markets evolve
 - Monitor model performance in production
@@ -96,4 +96,3 @@ Models are versioned by:
 ---
 
 For training instructions, see [docs/OVERVIEW.md](../docs/OVERVIEW.md)
-

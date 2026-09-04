@@ -18,12 +18,14 @@ Report security vulnerabilities via GitHub Issues (mark as security-related). In
 | Network calls | Active | Broker API integration |
 | Logging | Plaintext | Standard logging |
 | Encryption | None | Future enhancement |
-| Secrets in repo | None | Use .env (gitignored) |
+| Secrets in repo | Not intended | Use `.env` (gitignored); keep `.env.example` placeholder-only |
 
 ## Best Practices
 - Keep `.env` file secure and never commit it
+- Never force-add ignored files containing credentials, tokens, private keys, or broker data
+- If a secret was committed, revoke or rotate it immediately; deleting the file does not remove it from Git history
 - Use demo mode for testing
-- Sanitize logs before sharing
+- Sanitize logs, reports, and session files before sharing
 - Review code before trading with real funds
 - Formal threat modeling
 - Penetration testing

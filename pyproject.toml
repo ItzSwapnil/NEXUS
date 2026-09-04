@@ -39,6 +39,8 @@ dependencies = [
     "ta-lib>=0.6.0",
     "pandas-ta-classic>=0.6.0",
     "stock-indicators>=1.3.0",
+    "granian>=1.0",
+    "litestar>=2.24",
 ]
 
 [project.optional-dependencies]

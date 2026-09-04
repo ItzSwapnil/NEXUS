@@ -69,7 +69,11 @@ class AIEnsembleManager:
             w = self.weights.get("rl_agent", 0.2)
             action = rl_pred.get("action", "hold")
             if action in scores:
-                scores[action] += 0.8 * w
+                # Never turn an action into an arbitrary 80% probability.  The
+                # RL agent supplies a confidence estimate; absent that, use a
+                # neutral vote so the ensemble cannot manufacture certainty.
+                rl_confidence = float(rl_pred.get("confidence", 1.0 / 3.0))
+                scores[action] += max(0.0, min(1.0, rl_confidence)) * w
             total_weight += w
 
         if market_model_pred and "probabilities" in market_model_pred:
@@ -93,13 +97,10 @@ class AIEnsembleManager:
             probs = {"call": 0.33, "put": 0.33, "hold": 0.34}
 
         best_signal = max(probs, key=lambda k: probs[k])
-        c_val = probs.get("call", 0.0)
-        p_val = probs.get("put", 0.0)
-        dir_sum = c_val + p_val
-        if best_signal in ("call", "put") and dir_sum > 0:
-            confidence = float(max(c_val, p_val) / dir_sum)
-        else:
-            confidence = float(probs[best_signal])
+        # Report the probability mass of the selected class, including HOLD.
+        # Conditional renormalization over CALL/PUT made a weak directional
+        # edge look like high confidence whenever HOLD had significant mass.
+        confidence = float(probs[best_signal])
 
         return {
             "signal": best_signal,

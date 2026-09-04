@@ -36,10 +36,21 @@ copy .env.example .env  # Edit with your broker credentials
 python run.py
 ```
 
-# Create .env from template
-copy .env.example .env    # Windows
-cp .env.example .env      # Linux/macOS
+### Configure credentials
+
+On Windows:
+
+```powershell
+copy .env.example .env
 ```
+
+On Linux/macOS:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your local settings. It is ignored by Git and must never be committed. Keep `.env.example` free of real credentials.
 
 ## Configuration
 
@@ -144,6 +155,8 @@ Get-Content logs\nexus_*.log -Tail 50
 tail -f logs/nexus_*.log
 ```
 
+Logs are local runtime output and are ignored by Git. Remove or sanitize them before sharing, because requests, errors, or account-related details may be recorded.
+
 ### Clean Project
 ```bash
 # Using utility script
@@ -152,6 +165,8 @@ python scripts/clean_workspace.py
 # Or via launcher
 python run.py  # Select clean option
 ```
+
+The project also ignores local caches, reports, SQLite databases, session files, temporary files, and generated model artifacts. These files remain available locally but should not be added with `git add -f`.
 
 ## Safety First
 
@@ -226,4 +241,3 @@ For issues or questions:
 ---
 
 **Welcome to NEXUS!** Start with demo mode and explore the features safely.
-

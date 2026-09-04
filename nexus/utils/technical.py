@@ -462,20 +462,25 @@ def calculate_features(
     df["support"] = supports
     df["resistance"] = resistances
 
-    df["daily_return"] = np.zeros_like(close)
-    df.loc[1:, "daily_return"] = (close[1:] - close[:-1]) / close[:-1]
+    # Build complete arrays before assigning. Pandas 3 rejects the previous
+    # label-slice assignment when a non-default broker index is present.
+    daily_return = np.zeros_like(close)
+    daily_return[1:] = (close[1:] - close[:-1]) / close[:-1]
+    df["daily_return"] = daily_return
     returns = df["daily_return"].to_numpy(dtype=float)
     volatility = np.zeros_like(returns)
     for i in range(20, len(returns)):
         volatility[i] = np.std(returns[i - 20 : i])
     df["volatility"] = volatility
 
-    df["momentum"] = np.zeros_like(close)
-    df.loc[10:, "momentum"] = (close[10:] - close[:-10]) / close[:-10]
-    df["trend_strength"] = np.zeros_like(close)
-    df.loc[50:, "trend_strength"] = (df["ema_short"][50:] - df["ema_long"][50:]) / (
-        df["ema_long"][50:] + 1e-9
+    momentum = np.zeros_like(close)
+    momentum[10:] = (close[10:] - close[:-10]) / close[:-10]
+    df["momentum"] = momentum
+    trend_strength = np.zeros_like(close)
+    trend_strength[50:] = (df["ema_short"].to_numpy()[50:] - df["ema_long"].to_numpy()[50:]) / (
+        df["ema_long"].to_numpy()[50:] + 1e-9
     )
+    df["trend_strength"] = trend_strength
 
     # 6. Candlestick Patterns & Confluence
     patterns = detect_candlestick_patterns(open_p, high, low, close)
