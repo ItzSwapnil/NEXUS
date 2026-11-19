@@ -235,7 +235,7 @@ class QuotexClient:
             # Format time column if present
             if "time" in df.columns:
                 df["time"] = pd.to_datetime(df["time"], unit="s")
-                df.set_index("time", inplace=True)
+                df = df.set_index("time")
 
             logger.debug(f"Retrieved {len(df)} candles for {asset}")
             return df
@@ -351,8 +351,8 @@ class QuotexClient:
         """
         Get available assets from the Quotex platform.
 
-        Since pyquotex doesn't implement this method directly,
-        we return a predefined list of common assets available on Quotex.
+        Queries the broker's live asset listing methods. Returns an empty
+        list when the client is not connected or no method is available.
 
         Returns:
             list: List of available assets
@@ -360,41 +360,41 @@ class QuotexClient:
         if not self.client or not self.connected:
             raise RuntimeError("Not connected to Quotex")
 
-        # Since pyquotex doesn't provide a method to get available assets,
-        common_assets = [
-            "EURUSD",
-            "GBPUSD",
-            "USDJPY",
-            "AUDUSD",
-            "USDCAD",
-            "USDCHF",
-            "NZDUSD",
-            "EURJPY",
-            "GBPJPY",
-            "AUDJPY",
-            "EURGBP",
-            "EURAUD",
-            "GBPAUD",
-            "BTCUSD",
-            "ETHUSD",
-            "LTCUSD",
-            "XRPUSD",
-            "Apple",
-            "Amazon",
-            "Google",
-            "Microsoft",
-            "Tesla",
-            "Facebook",
-            "Gold",
-            "Silver",
-            "Oil",
-            "DAX",
-            "S&P 500",
-            "Dow Jones",
-            "NASDAQ",
-        ]
+        try:
+            loop = asyncio.get_event_loop()
+            c = self.client
 
-        logger.info(
-            f"Returning {len(common_assets)} predefined assets as pyquotex doesn't provide get_available_assets"
-        )
-        return common_assets
+            # Try different possible method names for getting assets
+            method_names = [
+                "get_available_assets",
+                "get_all_assets",
+                "get_assets",
+                "list_assets",
+            ]
+            for name in method_names:
+                if not hasattr(c, name):
+                    continue
+                try:
+                    fn = getattr(c, name)
+                    result = await loop.run_in_executor(None, fn)
+                    if asyncio.iscoroutine(result):
+                        result = await result
+                    if isinstance(result, list) and result:
+                        items = [str(x).strip() for x in result]
+                        return [x for x in items if x]
+                    if isinstance(result, dict) and result:
+                        return [
+                            str(v.get("symbol") or v.get("name") or k).strip()
+                            for k, v in result.items()
+                            if isinstance(v, dict)
+                        ] or list(result.keys())
+                except Exception:
+                    continue
+
+            logger.warning(
+                "No asset listing method available on broker client"
+            )
+            return []
+        except Exception as e:  # pragma: no cover
+            logger.exception(f"Error getting available assets: {e}")
+            raise

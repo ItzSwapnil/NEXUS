@@ -1,7 +1,6 @@
 """
-This module previously exposed a FastAPI app. All web server functionality has
-been removed per project requirements. Keep this module as a lightweight stub
-for backwards compatibility. No external web framework is used here.
+Lightweight interface for internal health and metrics compatibility.
+No external web framework is required here.
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ from nexus.analysis.market_analyzer import MarketAnalyzer
 from nexus.catalog.ingest import Market
 
 
-class FakeAI:
+class StaticAnalysisAI:
     async def analyze_market(self, candles, asset, timeframe, is_otc):
         return {
             "signal": "call" if asset == "EURUSD" else "put",
@@ -32,7 +32,7 @@ async def test_market_analyzer_uses_live_payout_and_estimates_scenarios():
 
     result = await MarketAnalyzer(base_stake=1, cycle_seconds=60).analyze(
         markets,
-        FakeAI(),
+        StaticAnalysisAI(),
         candles_fetcher=candles,
         min_confidence=0.7,
         autonomy=0.5,
@@ -53,7 +53,10 @@ async def test_market_analyzer_uses_live_payout_and_estimates_scenarios():
 async def test_market_analyzer_does_not_claim_price_gate_without_candles():
     market = Market("EURUSD", "Forex", 90.0, payout_per_expiration={"60": 90.0})
     result = await MarketAnalyzer().analyze(
-        [market], FakeAI(), candles_fetcher=lambda _symbol: _missing(), use_price_gate=True
+        [market],
+        StaticAnalysisAI(),
+        candles_fetcher=lambda _symbol: _missing(),
+        use_price_gate=True,
     )
     assert result.opportunities[0].recommended_entry_price is None
     assert result.opportunities[0].price_gate == "No live candles"

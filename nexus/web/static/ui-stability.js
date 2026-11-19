@@ -79,12 +79,32 @@ function renderBacktestStable(status, markets) {
   const result = document.getElementById("backtestResult");
   if (status.status === "learning") {
     result.textContent = `Training ${status.asset || ""} · ${status.detail || "Working"} · Learning candles: ${status.learning_candles || "—"} · Evaluation candles queued: ${status.evaluation_candles || "—"} · broker orders: 0`;
-  } else if (status.status === "complete") {
-    const buckets = (status.confidence_buckets || [])
-      .filter((bucket) => bucket.trades)
-      .map((bucket) => `${bucket.range}: ${(Number(bucket.win_rate) * 100).toFixed(1)}% (${bucket.trades})`)
-      .join(" · ");
-    result.textContent = `Local replay only · ${status.learning_hours}h learned + ${status.evaluation_hours}h evaluated · ${status.trades_scored || 0} scored · ${(Number(status.win_rate || 0) * 100).toFixed(1)}% win rate · payout ${Number(status.payout_percent || 0).toFixed(1)}% · break-even ${(Number(status.break_even_win_rate || 0) * 100).toFixed(1)}% · net P&L ${Number(status.net_profit || 0).toFixed(2)} · orders placed: 0${buckets ? ` · confidence bands — ${buckets}` : ""}`;
+  } else if (status.status === "complete" || status.status === "complete_with_errors") {
+    const lHours = status.learning_hours || 5;
+    const eHours = status.evaluation_hours || 1;
+    const scored = status.trades_scored || 0;
+    const decisions = status.decisions || 0;
+    const netProfit = Number(status.net_profit || 0).toFixed(2);
+    const minC = Math.round(Number(status.min_confidence || 0.7) * 100);
+    const maxC = status.max_confidence ? Math.round(Number(status.max_confidence) * 100) : null;
+    const confNote = maxC ? ` (highest signal was ${maxC}%, below ${minC}% threshold · set threshold to 60% to execute trades)` : ` (all signals remained below ${minC}% threshold)`;
+    if (status.markets) {
+      if (scored === 0) {
+        result.textContent = `Local replay complete · ${lHours}h learned + ${eHours}h evaluated across ${status.markets_total || status.markets.length} markets (${decisions} candidate bars analyzed) · 0 trades taken${confNote} · Net P&L: $${netProfit}`;
+      } else {
+        result.textContent = `Local replay complete · ${lHours}h learned + ${eHours}h evaluated across ${status.markets_total || status.markets.length} markets · ${scored} scored trades · ${(Number(status.win_rate || 0) * 100).toFixed(1)}% win rate · Net P&L: $${netProfit} · Orders placed: 0`;
+      }
+    } else {
+      const buckets = (status.confidence_buckets || [])
+        .filter((bucket) => bucket.trades)
+        .map((bucket) => `${bucket.range}: ${(Number(bucket.win_rate) * 100).toFixed(1)}% (${bucket.trades})`)
+        .join(" · ");
+      if (scored === 0) {
+        result.textContent = `Local replay complete · ${lHours}h learned + ${eHours}h evaluated (${decisions} candidate bars analyzed) · 0 trades taken${confNote} · Net P&L: $${netProfit}`;
+      } else {
+        result.textContent = `Local replay only · ${lHours}h learned + ${eHours}h evaluated · ${scored} scored · ${(Number(status.win_rate || 0) * 100).toFixed(1)}% win rate · payout ${Number(status.payout_percent || 0).toFixed(1)}% · break-even ${(Number(status.break_even_win_rate || 0) * 100).toFixed(1)}% · net P&L $${netProfit} · orders placed: 0${buckets ? ` · confidence bands — ${buckets}` : ""}`;
+      }
+    }
   } else if (status.status === "error") {
     result.textContent = `Backtest error: ${status.error || "unknown error"}`;
   }

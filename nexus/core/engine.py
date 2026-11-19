@@ -80,7 +80,7 @@ class NexusEngine:
         self.model_registry: Dict[str, Any] = {}
         self.risk_registry: Dict[str, Any] = {}
 
-        # Optional future extension placeholders
+        # Active strategy instance
         self.meta_strategy: Any = None
 
         # Emotional state (bounded in [0,1])
@@ -207,7 +207,7 @@ class NexusEngine:
                 candles, asset=asset, timeframe=60, is_otc=is_otc
             )  # type: ignore[no-any-return]
             result["data_source"] = "live broker candles"
-            return result
+            return dict(result)
         except Exception as e:
             logger.warning("AI analysis failed for %s: %s", asset, e)
             default_exp = (
@@ -223,6 +223,45 @@ class NexusEngine:
                 "stake": 10.0,
                 "recommended_expiration": default_exp,
                 "reasoning": f"Live AI analysis unavailable: {e}",
+                "data_source": "unavailable",
+            }
+
+    async def analyze_market_ai(
+        self,
+        candles_df: Any,
+        asset: str,
+        timeframe: int = 60,
+        is_otc: Optional[bool] = None,
+    ) -> Dict[str, Any]:
+        """Run full AI ensemble analysis on an already-fetched candle DataFrame.
+
+        Unlike get_ai_prediction(), this method accepts a pre-fetched DataFrame
+        so the caller controls candle retrieval and the AI engine gets real data.
+        """
+        if self.ai_engine is None:
+            try:
+                from nexus.ai.engine_ai import RealAITradingEngine
+
+                self.ai_engine = RealAITradingEngine()
+            except Exception as err:
+                logger.warning("Could not load RealAITradingEngine: %s", err)
+                return {
+                    "signal": "hold",
+                    "confidence": 0.0,
+                    "reasoning": f"AI engine unavailable: {err}",
+                    "data_source": "unavailable",
+                }
+        try:
+            result = await self.ai_engine.analyze_market(
+                candles_df, asset=asset, timeframe=timeframe, is_otc=is_otc
+            )
+            return dict(result)
+        except Exception as e:
+            logger.warning("AI ensemble analysis failed for %s: %s", asset, e)
+            return {
+                "signal": "hold",
+                "confidence": 0.0,
+                "reasoning": f"AI analysis error: {e}",
                 "data_source": "unavailable",
             }
 
@@ -249,9 +288,16 @@ class NexusEngine:
                 logger.warning("Could not load RealAITradingEngine for batch training: %s", err)
                 return []
         if not assets:
-            from nexus.adapters.quotex import COMMON_ASSETS
+            from nexus.catalog.ingest import catalog_is_populated, get_market_catalog
 
-            assets = list(COMMON_ASSETS)
+            if catalog_is_populated():
+                import asyncio
+
+                catalog = asyncio.get_event_loop().run_until_complete(get_market_catalog())
+                assets = [m.symbol for m in catalog if m.active]
+            if not assets:
+                logger.warning("No live market catalog available for batch training")
+                return []
         return cast(List[Dict[str, Any]], self.ai_engine.train_all_markets(assets))
 
     def run_async(self, coro: Any) -> Any:
@@ -275,7 +321,7 @@ class NexusEngine:
 
     async def initialize_components(
         self,
-    ) -> None:  # pragma: no cover - placeholder for GUI compatibility
+    ) -> None:  # pragma: no cover - async lifecycle hook for GUI compatibility
         """Async initialization hook (GUI expects this)."""
         self._initialized = True
         # Auto-login to broker if enabled
@@ -338,6 +384,14 @@ class NexusEngine:
         except Exception:
             pass
         logger.info("Connected to Quotex (mode=%s)", "DEMO" if self.demo_mode else "REAL")
+        # Populate market catalog with live broker data
+        try:
+            from nexus.catalog.ingest import fetch_live_catalog
+
+            await fetch_live_catalog(self._broker)
+            logger.info("Live market catalog populated from broker")
+        except Exception as cat_err:
+            logger.warning("Failed to populate live catalog: %s", cat_err)
         return True
 
     async def get_account_balance(self) -> float:
@@ -523,6 +577,7 @@ class NexusEngine:
                 "real_executed": False,
             }
         amount = amount_value
+        force_sim = os.getenv("NEXUS_FORCE_SIM", "0").lower() in {"1", "true", "yes"}
 
         if self.circuit_breaker_active:
             return {
@@ -534,30 +589,43 @@ class NexusEngine:
                 "real_executed": False,
             }
 
-        from nexus.catalog.ingest import get_market_by_symbol
+        from nexus.catalog.ingest import catalog_is_populated, get_market_by_symbol
 
         m_info = get_market_by_symbol(asset)
+        if m_info is None and not catalog_is_populated() and not force_sim:
+            return {
+                "success": False,
+                "error": "Market catalog not loaded — login to broker first",
+                "asset": asset,
+                "direction": direction,
+                "expiration": exp_key,
+                "real_executed": False,
+            }
         payout = get_payout_for_market(asset, exp_key) or (
-            m_info.display_payout_percent if m_info else 0.0
+            m_info.display_payout_percent if m_info else (80.0 if force_sim else 0.0)
         )
-        is_active = m_info.active if m_info else (payout > 0.0)
-        # The static catalog can lag Quotex or contain a different OTC
-        # snapshot. For an authenticated broker, reconcile the symbol and
+        is_active = m_info.active if m_info else (payout > 0.0 or force_sim)
+        # For an authenticated broker, reconcile the symbol and
         # payout against the broker's current catalog before rejecting it.
         if self._broker is not None and getattr(self._broker, "authenticated", False):
             try:
                 live_assets = await self._broker.get_assets_with_payouts_async()
                 target = str(asset).strip().upper()
                 for live in live_assets or []:
-                    if not isinstance(live, dict) or str(live.get("symbol", "")).strip().upper() != target:
+                    if (
+                        not isinstance(live, dict)
+                        or str(live.get("symbol", "")).strip().upper() != target
+                    ):
                         continue
                     live_payout = float(live.get("payout", 0.0) or 0.0)
                     payout = get_payout_for_market(asset, exp_key) or live_payout
                     is_active = bool(live.get("active", True))
                     break
             except Exception as catalog_err:
-                logger.warning("Live broker catalog reconciliation failed for %s: %s", asset, catalog_err)
-        if not is_active or payout <= 0.0:
+                logger.warning(
+                    "Live broker catalog reconciliation failed for %s: %s", asset, catalog_err
+                )
+        if not force_sim and (not is_active or payout <= 0.0):
             return {
                 "success": False,
                 "error": f"Market {asset} is currently OFFLINE / CLOSED.",
@@ -581,7 +649,6 @@ class NexusEngine:
                 return result
 
         # If broker is connected and not forced to simulate, place a real (demo/real) order
-        force_sim = os.getenv("NEXUS_FORCE_SIM", "0").lower() in {"1", "true", "yes"}
         if self._broker is not None and not force_sim:
             if not self.demo_mode:
                 current_bal = await self.get_account_balance()
@@ -604,10 +671,13 @@ class NexusEngine:
                 )
 
                 if isinstance(order, dict) and order.get("success"):
+
                     def _extract_order_id(value: Any) -> Any:
                         for _ in range(4):
                             if isinstance(value, dict):
-                                value = value.get("id") or value.get("order_id") or value.get("order")
+                                value = (
+                                    value.get("id") or value.get("order_id") or value.get("order")
+                                )
                             elif isinstance(value, str) and value.lstrip().startswith("{"):
                                 try:
                                     value = ast.literal_eval(value)
@@ -619,9 +689,7 @@ class NexusEngine:
 
                     # Quotex has returned: ID string, {id: ID}, and nested
                     # {id: {id: ID}} shapes across its client methods.
-                    broker_order_id = _extract_order_id(
-                        order.get("order_id") or order.get("order")
-                    )
+                    broker_order_id = _extract_order_id(order.get("order_id") or order.get("order"))
                     return {
                         "success": True,
                         "order_id": str(broker_order_id) if broker_order_id else "",
@@ -669,7 +737,10 @@ class NexusEngine:
                 p_win = float(os.getenv("NEXUS_P_WIN", "0.6"))
             except ValueError:
                 p_win = 0.6
-            p_win = min(0.99, max(0.01, p_win))
+            # Permit deterministic zero-probability simulations for tests and
+            # reproducible research runs. Production callers should provide
+            # a calibrated probability rather than relying on this fallback.
+            p_win = min(1.0, max(0.0, p_win))
             win = random.random() < p_win
 
             # Profit / loss multiplier ranges

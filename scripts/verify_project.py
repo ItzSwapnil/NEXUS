@@ -41,6 +41,11 @@ def verify_imports() -> bool:
     success = True
 
     try:
+        py_ver = sys.version.split()[0]
+        check(f"Python Runtime ({py_ver})", sys.version_info >= (3, 15))
+        if sys.version_info < (3, 15):
+            success = False
+
         import numpy
         import pandas
         import pydantic
@@ -79,7 +84,7 @@ def verify_models() -> bool:
 
         detector = RegimeDetector()
         dates = pd.date_range("2026-01-01", periods=50, freq="1min")
-        dummy_df = pd.DataFrame(
+        synthetic_market_df = pd.DataFrame(
             {
                 "open": np.linspace(100, 110, 50),
                 "high": np.linspace(101, 111, 50),
@@ -90,7 +95,7 @@ def verify_models() -> bool:
             index=dates,
         )
 
-        regime = asyncio.run(detector.detect_regime(dummy_df))
+        regime = asyncio.run(detector.detect_regime(synthetic_market_df))
         check(
             f"Regime Detector (Detected: {regime})",
             regime in ["BULL", "BEAR", "SIDEWAYS", "VOLATILE"],

@@ -1,6 +1,6 @@
 """Runtime patch and URL routing for pyquotex integration.
 
-Configures sign-in endpoints (https://qxbroker.com/en/sign-in) and pure-Python browser headers
+Configures sign-in endpoints (https://quotex.com/en/sign-in) and pure-Python browser headers
 to handle Quotex authentication safely without native memory crashes.
 """
 
@@ -12,6 +12,7 @@ from typing import Any
 from nexus.utils.logger import get_nexus_logger
 
 logger = get_nexus_logger("nexus.adapters.pyquotex_patch")
+QUOTEX_HOST = os.getenv("QUOTEX_HOST", "quotex.com").strip() or "quotex.com"
 
 try:
     from pyquotex.network.login import Login
@@ -27,17 +28,17 @@ if _HAS_PYQUOTEX:
     logging.getLogger("pyquotex.ws.client").setLevel(logging.ERROR)
 
     # 1. Update Base URLs and Login Endpoint Structure
-    Login.base_url = "qxbroker.com"
-    Login.https_base_url = "https://qxbroker.com"
+    Login.base_url = QUOTEX_HOST  # type: ignore[attr-defined]
+    Login.https_base_url = f"https://{QUOTEX_HOST}"  # type: ignore[attr-defined]
 
     _original_login_init = Login.__init__
 
     def _patched_login_init(self: Any, api: Any, *args: Any, **kwargs: Any) -> None:
         _original_login_init(self, api, *args, **kwargs)
         lang = getattr(api, "lang", "en") or "en"
-        self.https_base_url = "https://qxbroker.com"
-        # Full URL should be https://qxbroker.com/en
-        self.full_url = f"https://qxbroker.com/{lang}"
+        self.https_base_url = f"https://{QUOTEX_HOST}"
+        # Full URL should be https://quotex.com/en by default.
+        self.full_url = f"https://{QUOTEX_HOST}/{lang}"
 
         # Pure Python headers to match modern Chrome
         user_agent = os.getenv(
@@ -52,7 +53,7 @@ if _HAS_PYQUOTEX:
             "User-Agent": user_agent,
             "Accept": accept_hdr,
             "Accept-Language": "en-US,en;q=0.9",
-            "Referer": f"https://qxbroker.com/{lang}/sign-in",
+            "Referer": f"https://{QUOTEX_HOST}/{lang}/sign-in",
             "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
             "Sec-Ch-Ua-Mobile": "?0",
             "Sec-Ch-Ua-Platform": '"Linux"',
@@ -69,10 +70,10 @@ if _HAS_PYQUOTEX:
 
     Login.__init__ = _patched_login_init  # type: ignore[method-assign]
 
-    # 2. Patch get_sign_page to navigate cleanly to https://qxbroker.com/en/sign-in
+    # 2. Patch get_sign_page to navigate cleanly to the configured sign-in URL.
     async def _patched_get_sign_page(self: Any) -> Any:
         sign_in_url = f"{self.full_url}/sign-in"
-        self.headers["Referer"] = "https://qxbroker.com/"
+        self.headers["Referer"] = f"https://{QUOTEX_HOST}/"
         response = await self.send_request(
             method="GET",
             url=sign_in_url,
@@ -120,15 +121,15 @@ if _HAS_PYQUOTEX:
             msg_str = msg.decode("utf-8", errors="ignore") if isinstance(msg, bytes) else str(msg)
             is_control = bool(msg_str and msg_str[0].isdigit())
 
-            # Fix PyQuotex placeholder race condition:
-            # If an order placeholder is pending binary payload fulfillment,
-            # prevent incoming quotes/stream placeholders from clobbering _temp_status.
+            # Fix PyQuotex protocol frame race condition:
+            # If an order frame is pending binary payload fulfillment,
+            # prevent incoming quotes/stream frames from clobbering _temp_status.
             prev_status = getattr(self, "_temp_status", None)
-            is_order_placeholder = prev_status and any(
+            is_order_pending_frame = prev_status and any(
                 k in str(prev_status)
                 for k in ("orders/open", "s_orders/open", "orders/close", "s_orders/close")
             )
-            is_stream_placeholder = "51-" in msg_str and any(
+            is_stream_frame = "51-" in msg_str and any(
                 stream in msg_str for stream in ("quotes/stream", "depth/change", "candle")
             )
 
@@ -174,7 +175,8 @@ if _HAS_PYQUOTEX:
                                             )
                                             win_value = order_data.get("win")
                                             win = (
-                                                str(win_value).lower() in {"win", "true", "1", "equal"}
+                                                str(win_value).lower()
+                                                in {"win", "true", "1", "equal"}
                                                 if win_value is not None
                                                 else profit > 0
                                             )
@@ -191,9 +193,9 @@ if _HAS_PYQUOTEX:
             sys.stdout = io.StringIO()
             try:
                 await _original_on_message(self, msg)
-                if is_order_placeholder:
-                    # Payload fulfillment after a 451- placeholder
-                    if not is_control and not is_stream_placeholder:
+                if is_order_pending_frame:
+                    # Payload fulfillment after a 451- pending frame
+                    if not is_control and not is_stream_frame:
                         try:
                             start_idx = -1
                             for idx, char in enumerate(msg_str):
@@ -217,7 +219,8 @@ if _HAS_PYQUOTEX:
                                                 )
                                                 win_value = item.get("win")
                                                 win = (
-                                                    str(win_value).lower() in {"win", "true", "1", "equal"}
+                                                    str(win_value).lower()
+                                                    in {"win", "true", "1", "equal"}
                                                     if win_value is not None
                                                     else profit > 0
                                                 )
@@ -239,7 +242,7 @@ if _HAS_PYQUOTEX:
                         except Exception:
                             pass
 
-                if is_order_placeholder and is_stream_placeholder:
+                if is_order_pending_frame and is_stream_frame:
                     self._temp_status = prev_status
             finally:
                 captured = sys.stdout.getvalue()

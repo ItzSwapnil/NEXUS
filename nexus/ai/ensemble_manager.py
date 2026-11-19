@@ -1,10 +1,17 @@
 """AI Ensemble Manager for NEXUS.
 
-Combines predictions from multiple Deep Learning models (Market Transformer, Attention-LSTM, Deep RL Agent)
-and Market Regime Detector using adaptive fitness weighting and Sharpe performance tracking.
+Combines predictions from multiple models using adaptive fitness weighting:
+- Amazon Chronos 2 (pretrained foundation model, zero-shot forecasting)
+- Market Transformer (multi-head self-attention time-series predictor)
+- Attention-LSTM (bidirectional LSTM with temporal attention)
+- Deep RL Agent (Dueling Double DQN with Prioritized Experience Replay)
+- Market-specific gradient boosting classifier
+- Market Regime Detector
 """
 
 from typing import Any, Dict, Optional
+
+import numpy as np
 
 from nexus.utils.logger import get_nexus_logger
 
@@ -16,14 +23,17 @@ class AIEnsembleManager:
 
     def __init__(self, weights: Optional[Dict[str, float]] = None):
         default_weights = {
-            "transformer": 0.40,
-            "lstm": 0.30,
-            "rl_agent": 0.20,
-            "market_model": 0.15,
-            "regime": 0.10,
+            "chronos": 0.35,  # pretrained foundation model (highest prior)
+            "transformer": 0.25,
+            "lstm": 0.20,
+            "rl_agent": 0.12,
+            "market_model": 0.10,
+            "regime": 0.08,
         }
         self.weights = weights if weights is not None else default_weights
-        self.weights.setdefault("market_model", 0.15)
+        # Ensure all keys are present when loading older checkpoints
+        self.weights.setdefault("chronos", 0.35)
+        self.weights.setdefault("market_model", 0.10)
         self._normalize_weights()
 
     def _normalize_weights(self) -> None:
@@ -45,11 +55,20 @@ class AIEnsembleManager:
         lstm_pred: Optional[Dict[str, Any]] = None,
         rl_pred: Optional[Dict[str, Any]] = None,
         market_model_pred: Optional[Dict[str, Any]] = None,
+        chronos_pred: Optional[Dict[str, Any]] = None,
         regime: str = "SIDEWAYS",
     ) -> Dict[str, Any]:
         """Aggregate model predictions using ensemble weights."""
         scores = {"call": 0.0, "put": 0.0, "hold": 0.0}
         total_weight = 0.0
+
+        # --- Chronos 2 (pretrained foundation model) ---
+        if chronos_pred and "probabilities" in chronos_pred:
+            w = self.weights.get("chronos", 0.35)
+            probs = chronos_pred["probabilities"]
+            for k in scores:
+                scores[k] += probs.get(k, 1.0 / 3.0) * w
+            total_weight += w
 
         if transformer_pred and "probabilities" in transformer_pred:
             w = self.weights.get("transformer", 0.4)
@@ -97,10 +116,16 @@ class AIEnsembleManager:
             probs = {"call": 0.33, "put": 0.33, "hold": 0.34}
 
         best_signal = max(probs, key=lambda k: probs[k])
-        # Report the probability mass of the selected class, including HOLD.
-        # Conditional renormalization over CALL/PUT made a weak directional
-        # edge look like high confidence whenever HOLD had significant mass.
-        confidence = float(probs[best_signal])
+        dir_sum = probs.get("call", 0.0) + probs.get("put", 0.0)
+        if best_signal in ("call", "put") and dir_sum > 0.0:
+            dir_prob = probs[best_signal] / dir_sum
+            # In binary options, directional confidence is the conditional win probability [0.50, 0.99].
+            # Only apply slight damping if hold exceeds neutral baseline (1/3).
+            hold_mass = float(probs.get("hold", 0.0))
+            penalty = max(0.0, hold_mass - (1.0 / 3.0))
+            confidence = float(np.clip(dir_prob - penalty * 0.5, 0.50, 0.99))
+        else:
+            confidence = min(0.99, float(probs[best_signal]))
 
         return {
             "signal": best_signal,

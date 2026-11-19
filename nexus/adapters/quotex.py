@@ -30,39 +30,9 @@ from nexus.utils.logger import PerformanceLogger, get_nexus_logger
 logger = get_nexus_logger("nexus.adapters.quotex")
 perf_logger = PerformanceLogger("quotex_adapter")
 LOGIN_TIMEOUT_SECONDS = 30
+QUOTEX_HOST = os.getenv("QUOTEX_HOST", "quotex.com").strip() or "quotex.com"
 
-COMMON_ASSETS: List[str] = [
-    "EURUSD",
-    "GBPUSD",
-    "USDJPY",
-    "AUDUSD",
-    "USDCAD",
-    "USDCHF",
-    "NZDUSD",
-    "EURJPY",
-    "GBPJPY",
-    "AUDJPY",
-    "EURGBP",
-    "EURAUD",
-    "GBPAUD",
-    "BTCUSD",
-    "ETHUSD",
-    "LTCUSD",
-    "XRPUSD",
-    "Apple",
-    "Amazon",
-    "Google",
-    "Microsoft",
-    "Tesla",
-    "Facebook",
-    "Gold",
-    "Silver",
-    "Oil",
-    "DAX",
-    "S&P 500",
-    "Dow Jones",
-    "NASDAQ",
-]
+
 
 
 class QuotexAdapter:
@@ -140,6 +110,20 @@ class QuotexAdapter:
             except Exception as err:
                 logger.warning("Failed setting practice mode: %s", err)
 
+    async def close(self) -> None:
+        """Close the current WebSocket before a controlled reconnect."""
+        client, self.client = self.client, None
+        self.authenticated = False
+        self.login_ready.clear()
+        if client is None:
+            return
+        close = getattr(client, "close", None)
+        if close is not None:
+            try:
+                await self._maybe_await(close())
+            except Exception as err:
+                logger.debug("Broker client close failed during reconnect: %s", err)
+
     async def _ensure_authenticated(self) -> bool:
         if not self.authenticated or not self.client:
             self.authenticated = False
@@ -183,7 +167,7 @@ class QuotexAdapter:
                 self.client = Quotex(
                     email=self.email,
                     password=self.password,
-                    host="qxbroker.com",
+                    host=QUOTEX_HOST,
                     lang="en",
                 )
 
@@ -207,38 +191,122 @@ class QuotexAdapter:
                     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/124.0.0.0 Safari/537.36"
                 )
-                if (env_cookies or env_ssid) and not self._session_override:
-                    self.set_session(env_ua or chrome_ua, env_cookies, env_ssid)
 
-                if self._session_override and hasattr(self.client, "set_session"):
+                # Load session from session_file if no runtime session override or env is active
+                if not self._session_override and self.session_file and os.path.exists(self.session_file):
                     try:
-                        ua = self._session_override.get("user_agent") or "Quotex/1.0"
+                        import json
 
-                        self.client.set_session(
-                            ua,
-                            self._session_override.get("cookies"),
-                            self._session_override.get("ssid"),
-                        )
-                    except Exception:
-                        pass
+                        with open(self.session_file, "r", encoding="utf-8") as f:
+                            raw_sess = json.load(f)
+                            if isinstance(raw_sess, dict):
+                                self._session_override = {
+                                    "user_agent": raw_sess.get("user_agent") or chrome_ua,
+                                    "cookies": raw_sess.get("cookies"),
+                                    "ssid": raw_sess.get("ssid"),
+                                }
+                    except Exception as e:
+                        logger.warning("Failed to load session file %s: %s", self.session_file, e)
+
+                final_ssid = (self._session_override.get("ssid") if self._session_override else None) or env_ssid
+                final_cookies = (self._session_override.get("cookies") if self._session_override else None) or env_cookies
+                final_ua = (self._session_override.get("user_agent") if self._session_override else None) or env_ua or chrome_ua
+
+                if final_ssid or final_cookies:
+                    self._session_override = {
+                        "user_agent": final_ua,
+                        "cookies": final_cookies,
+                        "ssid": final_ssid,
+                    }
+                    if hasattr(self.client, "set_session"):
+                        try:
+                            self.client.set_session(final_ua, final_cookies, final_ssid)
+                        except Exception as e:
+                            logger.warning("client.set_session failed: %s", e)
+                # --- Attempt 1: connect with cached SSID/session ---
+                connected = False
                 try:
                     if hasattr(self.client, "connect"):
-                        await asyncio.wait_for(
-                            self._maybe_await(self.client.connect()), timeout=LOGIN_TIMEOUT_SECONDS
-                        )
-                    if hasattr(self.client, "check_connect"):
-                        ok = await asyncio.wait_for(
-                            self._maybe_await(self.client.check_connect()),
+                        result = await asyncio.wait_for(
+                            self._maybe_await(self.client.connect()),
                             timeout=LOGIN_TIMEOUT_SECONDS,
                         )
-                        if isinstance(ok, bool) and not ok:
-                            return False
+                        # New pyquotex stable_api returns (bool, str) tuple
+                        if isinstance(result, tuple):
+                            connected = bool(result[0])
+                        else:
+                            connected = bool(result) if result is not None else False
+                    if connected and hasattr(self.client, "check_connect"):
+                        chk = await asyncio.wait_for(
+                            self._maybe_await(self.client.check_connect()),
+                            timeout=10,
+                        )
+                        connected = bool(chk) if isinstance(chk, bool) else connected
                 except Exception as e:
-                    # A practice account is still broker-backed. Do not mark
-                    # the adapter authenticated when Quotex rejects the
-                    # connection; callers must be able to distinguish a real
-                    # order from a local simulation.
-                    logger.error("Broker connection failure: %s", e)
+                    logger.warning("Cached-session connect attempt failed: %s", e)
+                    connected = False
+
+                # --- Attempt 2: stale token — force fresh email/password auth ---
+                if not connected:
+                    logger.info(
+                        "Cached SSID invalid or expired — forcing fresh "
+                        "email/password authentication..."
+                    )
+                    # Clear stale / expired session override
+                    self._session_override = None
+                    if self.session_file and os.path.exists(self.session_file):
+                        try:
+                            os.remove(self.session_file)
+                            logger.info("Removed expired session file %s", self.session_file)
+                        except OSError as e:
+                            logger.debug("Could not remove expired session file: %s", e)
+
+                    if not self.email or not self.password:
+                        logger.warning(
+                            "No email/password available to re-authenticate after session expiration."
+                        )
+                        connected = False
+                    else:
+                        try:
+                            # Rebuild client with a blank session so pyquotex
+                            # falls through to HTTP login with email+password.
+                            self.client = Quotex(
+                                email=self.email,
+                                password=self.password,
+                                host=QUOTEX_HOST,
+                                lang="en",
+                            )
+                            if hasattr(self.client, "session_data"):
+                                self.client.session_data = {
+                                    "cookies": None,
+                                    "token": None,
+                                    "user_agent": chrome_ua,
+                                }
+                            result2 = await asyncio.wait_for(
+                                self._maybe_await(self.client.connect()),
+                                timeout=LOGIN_TIMEOUT_SECONDS,
+                            )
+                            if isinstance(result2, tuple):
+                                connected = bool(result2[0])
+                            else:
+                                connected = bool(result2) if result2 is not None else False
+                            if connected and hasattr(self.client, "check_connect"):
+                                chk2 = await asyncio.wait_for(
+                                    self._maybe_await(self.client.check_connect()),
+                                    timeout=10,
+                                )
+                                connected = bool(chk2) if isinstance(chk2, bool) else connected
+                            if connected:
+                                logger.info("Fresh email/password authentication successful.")
+                        except Exception as e2:
+                            logger.error("Fresh auth attempt also failed: %s", e2)
+                            connected = False
+
+                if not connected:
+                    logger.error(
+                        "All login attempts failed — "
+                        "check credentials and network connectivity."
+                    )
                     self.authenticated = False
                     self.login_ready.clear()
                     return False
@@ -259,7 +327,7 @@ class QuotexAdapter:
     def get_available_assets(self) -> List[str]:
         try:
             if not self.client:
-                return list(COMMON_ASSETS)
+                return []
             # Try a broader set of potential methods on pyquotex client
             methods = [
                 "get_available_assets",
@@ -301,14 +369,14 @@ class QuotexAdapter:
                             return result_list
                 except Exception:
                     continue
-            return list(COMMON_ASSETS)
+            return []
         except Exception:
-            return list(COMMON_ASSETS)
+            return []
 
     async def get_available_assets_async(self) -> List[str]:
         try:
             if not await self._ensure_authenticated():
-                return list(COMMON_ASSETS)
+                return []
             methods = [
                 "get_available_assets",
                 "get_available_asset",
@@ -346,7 +414,7 @@ class QuotexAdapter:
             # Fallback to sync variant if nothing returned
             return self.get_available_assets()
         except Exception:
-            return list(COMMON_ASSETS)
+            return []
 
     async def get_balance_async(self) -> float:
         if not await self._ensure_authenticated() or not self.client:
@@ -384,19 +452,7 @@ class QuotexAdapter:
     async def get_assets_with_payouts_async(self) -> List[Dict[str, Any]]:
         try:
             if not await self._ensure_authenticated() or not self.client:
-                seen_syms: set[str] = set()
-                fallback_res: List[Dict[str, Any]] = []
-                for s in COMMON_ASSETS:
-                    if s not in seen_syms:
-                        seen_syms.add(s)
-                        fallback_res.append(
-                            {
-                                "symbol": s,
-                                "payout": _get_default_payout_for_symbol(s),
-                                "active": True,
-                            }
-                        )
-                return fallback_res
+                return []
 
             instruments = []
             if hasattr(self.client, "get_instruments"):
@@ -438,7 +494,7 @@ class QuotexAdapter:
                             payout = (
                                 float(raw_payout)
                                 if (raw_payout > 0 and is_open)
-                                else (0.0 if not is_open else _get_default_payout_for_symbol(sym))
+                                else 0.0
                             )
 
                             seen_symbols.add(sym)
@@ -464,25 +520,13 @@ class QuotexAdapter:
                     dedup_res.append(
                         {
                             "symbol": s,
-                            "payout": _get_default_payout_for_symbol(s),
+                            "payout": 0.0,
                             "active": True,
                         }
                     )
             return dedup_res
         except Exception:
-            seen_err: set[str] = set()
-            err_res: List[Dict[str, Any]] = []
-            for s in COMMON_ASSETS:
-                if s not in seen_err:
-                    seen_err.add(s)
-                    err_res.append(
-                        {
-                            "symbol": s,
-                            "payout": _get_default_payout_for_symbol(s),
-                            "active": True,
-                        }
-                    )
-            return err_res
+            return []
 
     # ---- market data (candles) ----
     def get_candles(
@@ -901,19 +945,6 @@ def normalize_broker_symbol(raw_sym: str) -> str:
     if is_otc:
         return f"{clean_no_otc}_otc"
     return clean_no_otc
-
-
-def _get_default_payout_for_symbol(symbol: str) -> float:
-    s_upper = symbol.upper()
-    if "OTC" in s_upper:
-        return 88.0 if ("EURUSD" in s_upper or "GBPJPY" in s_upper) else 85.0
-    if any(pair in s_upper for pair in ("EURUSD", "GBPUSD", "GBPJPY", "EURJPY")):
-        return 85.0
-    if any(pair in s_upper for pair in ("USDJPY", "AUDUSD", "USDCAD", "XAUUSD")):
-        return 82.0
-    if "BTC" in s_upper or "ETH" in s_upper:
-        return 80.0
-    return 78.0
 
 
 __all__ = ["QuotexAdapter"]

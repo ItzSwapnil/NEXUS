@@ -52,6 +52,29 @@ try:  # pragma: no cover - GUI only
 except Exception:  # pragma: no cover
     QApplication = object  # type: ignore
     QMainWindow = object  # type: ignore
+    QWidget = object  # type: ignore
+    QLabel = object  # type: ignore
+    QPushButton = object  # type: ignore
+    QVBoxLayout = object  # type: ignore
+    QHBoxLayout = object  # type: ignore
+    QGroupBox = object  # type: ignore
+    QComboBox = object  # type: ignore
+    QCheckBox = object  # type: ignore
+    QSlider = object  # type: ignore
+    QSpinBox = object  # type: ignore
+    QDoubleSpinBox = object  # type: ignore
+    QTableWidget = object  # type: ignore
+    QTableWidgetItem = object  # type: ignore
+    QSplitter = object  # type: ignore
+    QHeaderView = object  # type: ignore
+    QFormLayout = object  # type: ignore
+    QMessageBox = object  # type: ignore
+    QTimer = object  # type: ignore
+    def Signal(*args: object, **kwargs: object) -> None:  # type: ignore
+        """Compatibility placeholder when the optional PySide6 GUI is absent."""
+        return None
+    Qt = object  # type: ignore
+    QColor = object  # type: ignore
     logger.error("PySide6 not installed; GUI unavailable.")
 
 try:
@@ -85,9 +108,9 @@ class MarketChartWidget(QWidget):
             layout.addWidget(self.canvas)
             self._init_series()
         else:
-            self.placeholder_lbl = QLabel("Live Market Chart (Matplotlib unavailable)")
-            self.placeholder_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(self.placeholder_lbl)
+            self.chart_status_lbl = QLabel("Live Market Chart (Matplotlib unavailable)")
+            self.chart_status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            layout.addWidget(self.chart_status_lbl)
 
     def set_ai_prediction(self, pred: Optional[Dict[str, Any]]) -> None:
         """Set latest AI prediction dictionary to render dynamic prediction overlay & future path."""
@@ -413,7 +436,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             self.candles_loaded_signal.connect(self._on_candles_loaded_main_thread)
             self.chart_ai_prediction_signal.connect(self._on_chart_ai_prediction_main_thread)
             self.market_trained_signal.connect(self._on_market_trained_main_thread)
-            self.market_training_progress_signal.connect(self._on_market_training_progress_main_thread)
+            self.market_training_progress_signal.connect(
+                self._on_market_training_progress_main_thread
+            )
             self.market_analysis_signal.connect(self._on_market_analysis_main_thread)
 
         central = QWidget(self)
@@ -553,8 +578,12 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         self.analysis_table.itemSelectionChanged.connect(self._on_analysis_market_selected)
         analysis_layout.addWidget(self.analysis_table)
         self.training_status_table = QTableWidget(0, 3)
-        self.training_status_table.setHorizontalHeaderLabels(["Market", "Training status", "Generation"])
-        self.training_status_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.training_status_table.setHorizontalHeaderLabels(
+            ["Market", "Training status", "Generation"]
+        )
+        self.training_status_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
         self.training_status_table.setMinimumHeight(100)
         analysis_layout.addWidget(QLabel("Per-market training progress"))
         analysis_layout.addWidget(self.training_status_table)
@@ -579,7 +608,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         )
         self.scenario_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.scenario_table.setMinimumHeight(150)
-        analysis_layout.addWidget(QLabel("Aggregate settings scenarios across all eligible markets"))
+        analysis_layout.addWidget(
+            QLabel("Aggregate settings scenarios across all eligible markets")
+        )
         analysis_layout.addWidget(self.scenario_table)
         root_layout.addWidget(analysis_box)
 
@@ -917,7 +948,11 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                     # accepted even though the response was lost. Do not place
                     # another order until the operator reviews the account.
                     err_lower = str(err).lower()
-                    if "confirm" in err_lower or "unverified" in err_lower or "timeout" in err_lower:
+                    if (
+                        "confirm" in err_lower
+                        or "unverified" in err_lower
+                        or "timeout" in err_lower
+                    ):
                         self._auto_trading_active = False
                         logger.error(
                             "AI Auto-Trader paused after ambiguous broker confirmation: %s", err
@@ -1027,7 +1062,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             self.status.showMessage(f"Connected to Quotex Broker ({mode_str})")
             self.balance_card.setText(f"Balance: ${balance:,.2f} ({mode_str})")
         else:
-            self.status.showMessage(f"Quotex broker unavailable ({mode_str}): {error or 'unknown error'}")
+            self.status.showMessage(
+                f"Quotex broker unavailable ({mode_str}): {error or 'unknown error'}"
+            )
             self.balance_card.setText(f"Balance: unavailable ({mode_str})")
 
     def _on_catalog_refreshed_main_thread(
@@ -1084,7 +1121,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         results = res.get("results", [])
         count = len(results)
         if count > 0:
-            trained = [item for item in results if item.get("status") == "trained" or item.get("accuracy")]
+            trained = [
+                item for item in results if item.get("status") == "trained" or item.get("accuracy")
+            ]
             skipped = count - len(trained)
             last = trained[-1] if trained else results[-1]
             last_sym = last.get("symbol", "Market")
@@ -1105,10 +1144,13 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         symbol = str(progress.get("symbol", ""))
         if not symbol:
             return
+
+        def _matches_symbol(r: int) -> bool:
+            it = self.training_status_table.item(r, 0)
+            return it is not None and it.text() == symbol
+
         row = next(
-            (r for r in range(self.training_status_table.rowCount())
-             if self.training_status_table.item(r, 0)
-             and self.training_status_table.item(r, 0).text() == symbol),
+            (r for r in range(self.training_status_table.rowCount()) if _matches_symbol(r)),
             -1,
         )
         if row < 0:
@@ -1135,7 +1177,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             self.analysis_summary.setText("No markets loaded. Refresh the live catalog first.")
             return
         self.analyze_markets_btn.setEnabled(False)
-        self.analysis_summary.setText(f"Analyzing {len(markets)} markets with live candles and payouts…")
+        self.analysis_summary.setText(
+            f"Analyzing {len(markets)} markets with live candles and payouts…"
+        )
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(self._analyze_all_markets_sync, markets)
         future.add_done_callback(lambda f: self._on_market_analysis_done(f))
@@ -1159,15 +1203,18 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             cycle_seconds=self.settings.trading.auto_trade_interval_seconds,
             max_markets_per_cycle=self.settings.trading.max_open_trades * 20,
         )
-        return self.engine.run_async(
-            analyzer.analyze(
-                markets,
-                ai_engine,
-                candles_fetcher=fetch_candles,
-                min_confidence=self.settings.trading.min_confidence,
-                autonomy=self.autonomy_slider.value() / 100.0,
-                use_price_gate=self.price_gate_checkbox.isChecked(),
-            )
+        return cast(
+            MarketAnalysisResult,
+            self.engine.run_async(
+                analyzer.analyze(
+                    markets,
+                    ai_engine,
+                    candles_fetcher=fetch_candles,
+                    min_confidence=self.settings.trading.min_confidence,
+                    autonomy=self.autonomy_slider.value() / 100.0,
+                    use_price_gate=self.price_gate_checkbox.isChecked(),
+                )
+            ),
         )
 
     def _on_market_analysis_done(self, future: concurrent.futures.Future) -> None:
@@ -1194,7 +1241,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                 f"{item.confidence * 100:.1f}%",
                 item.regime,
                 f"${item.expected_value_per_unit:.3f}",
-                f"{item.recommended_entry_price:g}" if item.recommended_entry_price else item.price_gate,
+                f"{item.recommended_entry_price:g}"
+                if item.recommended_entry_price
+                else item.price_gate,
                 f"{item.recommended_expiration}s",
             ]
             for col, value in enumerate(values):
@@ -1235,7 +1284,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                 "These are EV estimates, not guaranteed returns."
             )
         else:
-            self.analysis_summary.setText("No eligible positive-EV markets met the current confidence threshold.")
+            self.analysis_summary.setText(
+                "No eligible positive-EV markets met the current confidence threshold."
+            )
 
     # ------------------------ Threaded Operations ------------------------- #
     def _on_refresh_button_click(self) -> None:
@@ -1271,9 +1322,7 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                 self.engine.ai_engine = ai_engine
             results = []
             for symbol in symbols:
-                self.market_training_progress_signal.emit(
-                    {"symbol": symbol, "status": "training"}
-                )
+                self.market_training_progress_signal.emit({"symbol": symbol, "status": "training"})
                 candles = self.engine.run_async(broker.get_candles_async(symbol, 60, 150))
                 if candles is None or len(candles) < 30:
                     results.append(
@@ -1344,13 +1393,27 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
         future.add_done_callback(lambda f: self._on_catalog_refreshed(f))
 
     def _refresh_catalog_sync(self) -> tuple[bool, List[Market] | None, str | None]:
+        """Re-authenticate with the broker then fetch the live market catalog.
+
+        Market retrieval always requires a fresh login: an expired or missing
+        session returns an empty or stale list from the broker.
+        """
         try:
             from nexus.catalog.ingest import fetch_live_catalog, get_market_catalog
 
             broker = getattr(self.engine, "_broker", None)
-            if broker is not None and getattr(broker, "authenticated", False):
-                markets = self.engine.run_async(fetch_live_catalog(broker))
+            if broker is not None:
+                # Always re-login first to guarantee a current session
+                reconnected = self.engine.run_async(self.engine.login_broker())
+                if reconnected:
+                    # login_broker already calls fetch_live_catalog internally;
+                    # call it again via the adapter to get the freshest data.
+                    markets = self.engine.run_async(fetch_live_catalog(broker))
+                else:
+                    # Session refresh failed — return whatever the cache holds
+                    markets = self.engine.run_async(get_market_catalog())
             else:
+                # No broker configured — catalog will be empty until login
                 markets = self.engine.run_async(get_market_catalog())
             return (True, markets, None)
         except Exception as e:
@@ -1557,9 +1620,11 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                 if broker and hasattr(broker, "get_trade_outcome") and broker_id:
                     real_result = broker.get_trade_outcome(str(broker_id))
 
-                if real_result and real_result.get("status") == "SETTLED" and str(
-                    real_result.get("outcome", "")
-                ).upper() in {"WIN", "LOSS", "EQUAL"}:
+                if (
+                    real_result
+                    and real_result.get("status") == "SETTLED"
+                    and str(real_result.get("outcome", "")).upper() in {"WIN", "LOSS", "EQUAL"}
+                ):
                     pos["outcome"] = str(real_result["outcome"]).upper()
                     pos["profit"] = float(real_result.get("profit", 0.0))
                     self._trade_store.record_settlement(
@@ -1578,7 +1643,9 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                                 )
                             )
                         except Exception as learn_err:
-                            logger.warning("AI feedback update failed for %s: %s", pos["id"], learn_err)
+                            logger.warning(
+                                "AI feedback update failed for %s: %s", pos["id"], learn_err
+                            )
                     if self.engine.demo_mode:
                         payout_gain = (
                             pos["amount"] + pos["profit"]
@@ -1596,8 +1663,11 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
                         pos["profit"] = 0.0
                         pos["report_error"] = "Broker settlement feedback unavailable"
                         self._trade_store.record_settlement(
-                            str(pos["id"]), "UNVERIFIED", 0.0,
-                            status="UNVERIFIED", error=pos["report_error"]
+                            str(pos["id"]),
+                            "UNVERIFIED",
+                            0.0,
+                            status="UNVERIFIED",
+                            error=pos["report_error"],
                         )
                         to_remove.append(pos)
                 elif (
@@ -1674,7 +1744,13 @@ class NexusMainWindow(QMainWindow):  # pragma: no cover - UI heavy
             outcome_item = QTableWidgetItem(str(pos["outcome"]))
             outcome = str(pos.get("outcome", pos.get("result", "UNVERIFIED"))).upper()
             outcome_item.setForeground(
-                QColor("#00e676" if outcome == "WIN" else "#ffb74d" if outcome in {"UNVERIFIED", "PENDING"} else "#ff5252")
+                QColor(
+                    "#00e676"
+                    if outcome == "WIN"
+                    else "#ffb74d"
+                    if outcome in {"UNVERIFIED", "PENDING"}
+                    else "#ff5252"
+                )
             )
             self.history_table.setItem(row, 5, outcome_item)
 

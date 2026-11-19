@@ -6,7 +6,7 @@ import pytest
 from nexus.strategies.meta_strategy import MetaStrategy, SignalType
 
 
-class StubTransformer:
+class DeterministicTransformer:
     async def predict(self, data, asset, timeframe, regime):
         return {
             "signal": "call",
@@ -16,7 +16,7 @@ class StubTransformer:
         }
 
 
-class StubRLAgent:
+class DeterministicRLAgent:
     def __init__(self, confidence=0.90, direction="put"):
         self._confidence = confidence
         self._direction = direction
@@ -30,7 +30,7 @@ class StubRLAgent:
         }
 
 
-class StubRegimeDetector:
+class DeterministicRegimeDetector:
     async def detect_regime(self, data):
         return "ranging"
 
@@ -42,10 +42,12 @@ async def test_weight_persistence_and_adaptation(tmp_path, monkeypatch):
 
     # Fresh instance (no weights file yet)
     ms = MetaStrategy(
-        transformer=StubTransformer(), rl_agent=StubRLAgent(), regime_detector=StubRegimeDetector()
+        transformer=DeterministicTransformer(),
+        rl_agent=DeterministicRLAgent(),
+        regime_detector=DeterministicRegimeDetector(),
     )
 
-    # Dummy market data
+    # Sample market data
     df = pd.DataFrame({"open": [1, 2, 3], "close": [1, 2, 3]})
     signals = await ms.collect_signals(df, asset="EURUSD", timeframe=1)
     filtered = ms.filter_signals(signals)
@@ -63,7 +65,9 @@ async def test_weight_persistence_and_adaptation(tmp_path, monkeypatch):
 
     # New instance should load persisted weights
     ms2 = MetaStrategy(
-        transformer=StubTransformer(), rl_agent=StubRLAgent(), regime_detector=StubRegimeDetector()
+        transformer=DeterministicTransformer(),
+        rl_agent=DeterministicRLAgent(),
+        regime_detector=DeterministicRegimeDetector(),
     )
     # With monkeypatch the path constant differs, so re-point and load manually
     monkeypatch.setattr(ms2, "_load_weights", lambda: None)
@@ -77,22 +81,24 @@ async def test_ensemble_tie_returns_none(tmp_path, monkeypatch):
     monkeypatch.setattr("nexus.strategies.meta_strategy._WEIGHTS_PATH", tmp_path / "weights.json")
 
     # Configure RL agent to create a tie on weighted votes
-    transformer = StubTransformer()
+    transformer = DeterministicTransformer()
 
     # transformer: weight 0.4 * 0.75 = 0.3 ; rl: weight 0.3 * 1.0 = 0.3
-    class TieTransformer(StubTransformer):
+    class TieTransformer(DeterministicTransformer):
         async def predict(self, data, asset, timeframe, regime):
             r = await super().predict(data, asset, timeframe, regime)
             r["confidence"] = 0.75
             return r
 
     transformer = TieTransformer()
-    rl = StubRLAgent(confidence=1.0, direction="put")
+    rl = DeterministicRLAgent(confidence=1.0, direction="put")
 
     # Disable context bias to preserve deterministic tie behavior
     monkeypatch.setenv("NEXUS_DISABLE_CONTEXT_BIAS", "1")
 
-    ms = MetaStrategy(transformer=transformer, rl_agent=rl, regime_detector=StubRegimeDetector())
+    ms = MetaStrategy(
+        transformer=transformer, rl_agent=rl, regime_detector=DeterministicRegimeDetector()
+    )
     df = pd.DataFrame({"open": [1, 2, 3], "close": [1, 2, 3]})
     signals = await ms.collect_signals(df, asset="EURUSD", timeframe=1)
     filtered = ms.filter_signals(signals)

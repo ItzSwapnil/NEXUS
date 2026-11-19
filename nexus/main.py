@@ -52,6 +52,7 @@ async def launch_web_mode(
         if os.getenv("NEXUS_WEB_SERVER", "granian").lower() == "granian":
             from granian import Granian
             from granian.constants import Interfaces
+            from granian.log import LogLevels
 
             os.environ["NEXUS_WEB_DEMO"] = "1" if engine.demo_mode else "0"
             if config_path:
@@ -65,7 +66,7 @@ async def launch_web_mode(
                 workers=1,
                 runtime_threads=1,
                 websockets=True,
-                log_level="info",
+                log_level=LogLevels.info,
                 factory=True,
             )
             # Granian installs signal handlers during startup and therefore
@@ -142,39 +143,42 @@ async def run_autonomous_mode(engine: NexusEngine, settings: NexusSettings) -> N
     logger.info("Starting NEXUS autonomous trading mode...")
     logger.warning("Autonomous trading mode is experimental - use with caution!")
 
-    import pandas as pd
-
+    from nexus.data.provider import DataProvider
     from nexus.strategies.meta_strategy import MetaStrategy
 
-    # Initialize meta strategy
+    # Initialize data provider and meta strategy
+    provider = DataProvider()
+    if getattr(engine, "_broker", None) is not None:
+        provider.set_broker(engine._broker)
     meta_strategy = MetaStrategy()
     engine.meta_strategy = meta_strategy
 
     # Main trading loop
     trade_count = 0
     max_trades = settings.trading.max_daily_trades
+    target_asset = settings.trading.default_asset
+    target_tf = settings.trading.prediction_interval
 
     try:
         while trade_count < max_trades:
             logger.info(f"Trade cycle {trade_count + 1}/{max_trades}")
 
-            # Generate synthetic market data for demonstration
-            # In production, this would fetch real market data
-            synthetic_data = pd.DataFrame(
-                {
-                    "open": [100.0, 100.1, 100.2, 100.3, 100.4],
-                    "high": [100.2, 100.3, 100.4, 100.5, 100.6],
-                    "low": [99.8, 99.9, 100.0, 100.1, 100.2],
-                    "close": [100.1, 100.2, 100.3, 100.4, 100.5],
-                    "volume": [1000, 1100, 1200, 1300, 1400],
-                }
+            # Fetch real market data via DataProvider
+            market_data = await provider.get_ohlcv(
+                symbol=target_asset,
+                timeframe=target_tf,
+                limit=100,
             )
+            if market_data is None or market_data.empty:
+                logger.warning(f"No market data available for {target_asset}, retrying...")
+                await asyncio.sleep(settings.trading.auto_trade_interval_seconds)
+                continue
 
             # Get trading signal from meta strategy
             signal_result = await meta_strategy.generate_signal(
-                synthetic_data,
-                asset=settings.trading.default_asset,
-                timeframe=settings.trading.prediction_interval,
+                market_data,
+                asset=target_asset,
+                timeframe=target_tf,
             )
 
             if signal_result:
@@ -256,8 +260,15 @@ Examples:
         default="INFO",
         help="Set logging level",
     )
-    parser.add_argument("--host", default="127.0.0.1", help="Web server bind host")
-    parser.add_argument("--port", type=int, default=8000, help="Web server port")
+    parser.add_argument(
+        "--host", default=os.getenv("NEXUS_HOST", "0.0.0.0"), help="Web server bind host"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("PORT", os.getenv("NEXUS_PORT", "8000"))),
+        help="Web server port",
+    )
 
     # CLI pass-through options
     parser.add_argument("--backtest", action="store_true", help="Run backtest (CLI mode)")

@@ -14,8 +14,8 @@ async def test_place_demo_trade():
     expiration = 60
     direction = "call"
     demo = True
-    email_override = "test@example.com"  # Use a dummy email for the test
-    password_override = "testpassword"  # Use a dummy password for the test
+    email_override = "test@example.com"  # Test account identifier
+    password_override = "testpassword"  # Test password credential
 
     # Run the trade function
     result = await run_trade(

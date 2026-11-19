@@ -152,9 +152,21 @@ async def main():
 
     # Dynamic asset discovery if requested
     if len(args.assets) == 1 and args.assets[0].lower() == "auto":
-        console.print(
-            Panel("Live asset auto-fetch not implemented in lightweight prototype", style="yellow")
-        )
+        from nexus.catalog.ingest import fetch_live_catalog, get_market_catalog
+
+        if getattr(engine, "_broker", None) is not None:
+            catalog = await fetch_live_catalog(engine._broker)
+        else:
+            catalog = await get_market_catalog()
+        active_assets = [m.symbol for m in catalog if m.active]
+        if active_assets:
+            args.assets = active_assets
+            preview = ", ".join(active_assets[:6]) + ("..." if len(active_assets) > 6 else "")
+            console.print(
+                Panel(
+                    f"Discovered {len(active_assets)} active market assets: {preview}", style="cyan"
+                )
+            )
 
     if args.list_strategies:
         table = Table(title="Available Strategies", box=box.SIMPLE)
@@ -183,7 +195,19 @@ async def main():
         sys.exit(0)
 
     if args.train:
-        console.print(Panel("Model retraining stub (not implemented).", style="yellow"))
+        console.print(Panel(f"Retraining models for assets: {args.assets}...", style="bold cyan"))
+        results = engine.train_all_markets_ai(args.assets)
+        train_table = Table(title="Model Retraining Summary", box=box.SIMPLE)
+        train_table.add_column("Asset")
+        train_table.add_column("Status")
+        train_table.add_column("Details")
+        for res in results:
+            train_table.add_row(
+                str(res.get("asset", "N/A")),
+                str(res.get("status", "completed")),
+                str(res.get("details", f"samples={res.get('samples', 'N/A')}")),
+            )
+        console.print(train_table)
         sys.exit(0)
 
     if args.stats:
@@ -320,10 +344,37 @@ async def main():
         console.print(Panel(f"Final Best Weights: {best}", style="green"))
         sys.exit(0)
 
-    if args.start:
-        console.print(
-            Panel("Trading loop not implemented in lightweight prototype.", style="yellow")
+    if getattr(args, "place_trade", False):
+        trade_asset = args.assets[0] if args.assets else settings.trading.default_asset
+        trade_direction = args.direction or "call"
+        trade_amount = (
+            float(args.amount)
+            if args.amount is not None
+            else float(settings.trading.base_trade_amount)
         )
+        trade_duration = int(args.duration) if args.duration else 60
+        console.print(
+            Panel(
+                f"Executing trade: {trade_asset} {trade_direction} ${trade_amount:.2f} ({trade_duration}s)",
+                style="bold cyan",
+            )
+        )
+        trade_res = await engine.execute_trade(
+            trade_asset, trade_direction, trade_amount, trade_duration
+        )
+        console.print(
+            Panel(
+                f"Trade Result: {trade_res}",
+                style="green" if trade_res.get("success") else "red",
+            )
+        )
+        sys.exit(0)
+
+    if args.start or getattr(args, "live_trade", False):
+        from nexus.main import run_autonomous_mode
+
+        console.print(Panel("Starting NEXUS autonomous trading loop...", style="bold green"))
+        await run_autonomous_mode(engine, settings)
         sys.exit(0)
 
     if args.gui:

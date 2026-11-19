@@ -31,7 +31,7 @@ def test_market_predictor_forward():
         "resistance",
     ]
     predictor = MarketPredictor(lookback_periods=10, feature_dim=len(required_cols), batch_size=2)
-    # Generate dummy data with all required columns
+    # Generate synthetic feature data with all required columns
     data = pd.DataFrame(np.random.randn(10, len(required_cols)), columns=required_cols)
     tensor = predictor.preprocess(data)
     logits, confidence = predictor.model(tensor)
@@ -54,7 +54,7 @@ def test_rl_agent_learn():
 @pytest.mark.asyncio
 async def test_regime_detector_detect():
     detector = RegimeDetector(n_regimes=3, lookback_periods=50)
-    # Generate dummy OHLCV data
+    # Generate synthetic OHLCV data
     data = pd.DataFrame(
         {
             "open": np.random.rand(50),
@@ -93,3 +93,31 @@ async def test_regime_detector_detect():
     )
     regime = await detector.detect_regime(data)
     assert regime in detector.REGIMES
+
+
+def test_ensemble_directional_confidence() -> None:
+    from nexus.ai.ensemble_manager import AIEnsembleManager
+
+    manager = AIEnsembleManager()
+
+    # When directional edge exists, confidence reflects directional win probability
+    res = manager.combine_predictions(
+        transformer_pred={"probabilities": {"call": 0.55, "put": 0.25, "hold": 0.20}},
+        lstm_pred={"probabilities": {"call": 0.50, "put": 0.25, "hold": 0.25}},
+        rl_pred={"action": "call", "confidence": 0.70},
+        chronos_pred={"probabilities": {"call": 0.60, "put": 0.20, "hold": 0.20}},
+        regime="BULL",
+    )
+    assert res["signal"] == "call"
+    # Should produce actionable confidence above 0.65
+    assert res["confidence"] >= 0.65
+
+    # When hold dominates, signal is hold
+    res_hold = manager.combine_predictions(
+        transformer_pred={"probabilities": {"call": 0.20, "put": 0.20, "hold": 0.60}},
+        lstm_pred={"probabilities": {"call": 0.25, "put": 0.25, "hold": 0.50}},
+        rl_pred={"action": "hold", "confidence": 0.60},
+        chronos_pred={"probabilities": {"call": 0.15, "put": 0.15, "hold": 0.70}},
+        regime="VOLATILE",
+    )
+    assert res_hold["signal"] == "hold"

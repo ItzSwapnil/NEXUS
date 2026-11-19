@@ -1,3 +1,5 @@
+import importlib
+
 import pytest
 
 
@@ -17,3 +19,13 @@ def test_gui_import_only():
     )
     engine = NexusEngine(settings)  # noqa: F841
     assert True  # If we reached here, smoke passed
+
+
+def test_gui_launch_module_imports_without_qt():
+    """The launch module should not crash on import when optional GUI deps are absent."""
+    try:
+        mod = importlib.import_module("nexus.gui.launch_gui")
+    except ModuleNotFoundError as exc:
+        pytest.fail(f"GUI launch module unexpectedly imports with a missing dependency: {exc}")
+
+    assert hasattr(mod, "launch_nexus_gui")

@@ -1,111 +1,73 @@
-# NEXUS Documentation Overview
+# NEXUS technical overview
 
-Comprehensive overview of the NEXUS autonomous AI trading system architecture and implementation.
+NEXUS is a Python research and trading-system project. The codebase includes market-data providers, forecasting and adaptive research components, backtesting, risk controls, broker adapters, and web and CLI entry points. The implementation is experimental; this document describes the current source tree rather than a production readiness claim.
 
-## 1. Purpose & Scope
-NEXUS is a production-ready trading system focusing on:
-- Deep learning AI models (LSTM with attention, DQN agent, ensemble learning)
-- Advanced risk management and position sizing
-- Multi-broker integration architecture
-- Real-time market data processing and technical analysis
-- Comprehensive backtesting framework
-- PySide6 GUI dashboard with real-time monitoring
-- 51+ unit tests covering core functionality
+## Start the project
 
-## 2. Quick Start
+The project currently requires CPython 3.15 (`>=3.15,<3.16`). From the repository root:
+
 ```bash
-uv venv .venv
-.venv\Scripts\activate   # Windows
-uv pip install -e ".[gui,ta]"
-pytest -v              # Run test suite
-python run.py          # Launch GUI
+uv sync --all-extras
+uv run python run.py
 ```
 
-## 3. Configuration
-Key .env configuration fields:
-- QUOTEX_EMAIL / QUOTEX_PASSWORD - Broker credentials
-- TRADING_MODE - demo or live
-- DEFAULT_ASSET / DEFAULT_EXPIRATION / BASE_TRADE_AMOUNT
-- MAX_RISK_PER_TRADE_PERCENT - Risk management
-- ENABLE_AI_MODELS - Enable/disable AI predictions
-- USE_KELLY_CRITERION - Advanced position sizing
+Copy `.env.example` to `.env` for local configuration. Keep account credentials and tokens out of Git. See [Getting Started](../GETTING_STARTED.md) for platform-specific setup.
 
-## 4. Core Modules
-| Module | Description |
-|--------|-------------|
-| catalog.ingest | Static placeholder markets & payouts |
-| ai.lstm_predictor | LSTM with attention for price prediction |
-| ai.deep_rl_agent | Deep Q-Network agent for strategy learning |
-| ai.ensemble_manager | Meta-learning model combination |
-| core.engine | Trading engine with risk management |
-| strategies.meta_strategy | Strategy orchestration |
-| adapters.quotex_adapter | Quotex broker integration |
-| gui.main_window | PySide6 dashboard implementation |
-| intelligence.* | Regime detection, fitness evaluation, exploration |
-## 5. Data Shapes
-- Market: `symbol, asset_type, payout_per_expiration, display_payout_percent, otc`
-- Trade result: `{success, profit, asset, direction, expiration, real_executed}`
-- Engine stats: `{total_trades, winning_trades, losing_trades, total_profit}`
-- Emotion state: greed/fear/confidence ∈ [0,1]
+## Main components
 
-## 6. Safety Controls
-| Control | Effect |
-|---------|-------|
-| Payout Threshold | Blocks (future real) trades if payout < threshold |
-| Override | Bypass guard (audit log) |
-| Demo Mode | All trades simulated |
-| PANIC STOP | Forces demo mode + disables override |
+| Area | Location | Responsibility |
+|---|---|---|
+| Entry points | `run.py`, `nexus/main.py`, `nexus/cli.py` | Interactive launcher, web app, and command-line interface |
+| Broker integration | `nexus/adapters/` | Quotex adapter and compatibility code |
+| Market data | `nexus/data/`, `nexus/catalog/` | OHLCV retrieval, caching, and market catalog management |
+| Adaptive intelligence | `nexus/intelligence/` | Representation, forecasts, policy and risk decisions, replay memory, and research evaluation |
+| Legacy AI | `nexus/ai/` | LSTM, DQN, ensemble, and training components retained alongside newer work |
+| Backtesting | `nexus/backtest/` | Historical replay and result aggregation |
+| Web interface | `nexus/web/` | Dashboard, API, and static client assets |
+| Tests | `tests/` | Unit and integration coverage |
 
-## 7. GUI (Implemented Elements)
-- Markets table + payout filter
-- Demo mode toggle, override button, panic stop
-- Refresh catalog, test trade button
-- Autonomy (epsilon base) slider
-- Stats + epsilon labels
-(Deferred: live balance, charts, asset selection, strategy cards.)
+## Adaptive research flow
 
-## 8. Epsilon Formula
+The newer adaptive components are organized around a causal research pipeline:
+
+```text
+market observations
+  → features and representation
+  → market state and probabilistic forecast
+  → policy proposal
+  → independent risk decision
+  → execution or paper observation
+  → settled outcome and replay research
 ```
-confidence = mean(norm(sharpe), norm(stability), norm(win_rate))
-uncertainty = weighted(atr, disagreement, spread, otc)
-modifier from payout reduces exploration for higher payouts
-clamped to [min_epsilon, max_epsilon]
+
+An outcome is stored as experience; it does not by itself update a production model. Replay and evaluation are separate steps. See [Adaptive intelligence](ADAPTIVE_INTELLIGENCE.md) for the component-level description.
+
+## Run modes
+
+```bash
+uv run python -m nexus.main --web --demo             # Web dashboard
+uv run python -m nexus.main --cli --demo --stats     # CLI with statistics
+uv run python -m nexus.main --cli --backtest --demo  # Backtest
+uv run python -m nexus.cli                           # CLI module
 ```
-Display only (no routing yet).
 
-## 9. Roadmap (Condensed)
-1. Real pyquotex adapter integration
-2. Live catalog ingestion
-3. Persistence (DuckDB) for trades & payouts
-4. Backtester (replay + metrics parity)
-5. Predictive model baseline (statistical / ML)
-6. Strategy lifecycle (shadow → micro-live → champion)
-7. Risk extensions (drawdown & daily loss guards)
-8. GUI expansions (asset selection, history panel, charts, balance)
-9. Structured JSON logging & async task manager
-10. Incremental RL / evolution features
+The main entry point defaults to the web dashboard and demo mode. Broker-backed workflows still require valid account setup; demo mode can contact the broker and should not be mistaken for a fully offline simulation.
 
-## 10. Out of Scope (Now)
-- Credential encryption
-- Multi-broker abstraction
-- Complex RL/evolution pipelines
-- Distributed or high-performance compute optimizations
+## Configuration and generated files
 
-## 11. Testing
-Run: `pytest -q` (23 passing). GUI not covered by tests yet.
-Run: `pytest -v` (51+ passing tests covering core functionality).
-## 12. Contributing
-Small, focused PRs; update docs only when a feature is implemented. See CONTRIBUTING.md.
+Configuration is loaded from environment variables and `.env`; supported settings are defined in `nexus/utils/config.py` and the related settings models. Start from `.env.example`, and check the code before relying on a setting name or default.
 
-## 13. Glossary
-| Term | Definition |
-|------|------------|
-| OTC | Over-the-counter (higher uncertainty) |
-| Override | Manual guard bypass (audited) |
-| Epsilon | Exploration rate figure (display) |
+Caches, logs, reports, session data, local databases, and trained weights are runtime artifacts and are ignored by Git. The repository keeps small README files in `data/` and `models/` to explain those directories.
 
-## 14. Disclaimer
-Prototype / simulation. Not suitable for real trading decisions without further development.
+## Development
 
----
-This unified overview replaces fragmented earlier docs; keep it tight & factual.
+```bash
+uv sync --all-extras
+uv run pytest
+```
+
+Lint and type-check commands are documented in [Contributing](../CONTRIBUTING.md). Test counts are intentionally omitted because they change as the suite changes.
+
+## Scope and limitations
+
+NEXUS includes experimental research and broker-connected code. Backtests, model outputs, and demo results are not evidence of future returns. Review [Security](../SECURITY.md), the broker workflow, and applicable terms before connecting an account.

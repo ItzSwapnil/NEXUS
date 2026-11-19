@@ -7,35 +7,35 @@ from nexus.strategies.meta_strategy import MetaStrategy
 from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
 
 
-# --- Stubs reused (lightweight) ---
-class StubTransformer:
+# --- Deterministic Test Ensembles ---
+class DeterministicTransformer:
     async def predict(self, data, asset, timeframe, regime):
         return {
             "signal": "call",
             "confidence": 0.9,
-            "reasoning": "stub_transformer",
+            "reasoning": "deterministic_transformer",
             "features": {"trend_strength": 0.8, "volatility": 0.2, "momentum": 0.4},
         }
 
 
-class StubRLAgent:
+class DeterministicRLAgent:
     async def predict(self, data, asset, timeframe, regime):
         return {
             "signal": "put",
             "confidence": 0.85,
-            "reasoning": "stub_rl",
+            "reasoning": "deterministic_rl",
             "features": {"trend_strength": 0.75, "volatility": 0.25, "momentum": 0.45},
         }
 
 
-class StubRegimeDetector:
+class DeterministicRegimeDetector:
     async def detect_regime(self, data):
         return "ranging"
 
 
 @pytest.mark.asyncio
 async def test_backtester_runs_and_collects_trades():
-    # Build simple ascending OHLC data (placeholder)
+    # Build simple ascending OHLC test data
     rows = 120
     df = pd.DataFrame(
         {
@@ -48,15 +48,15 @@ async def test_backtester_runs_and_collects_trades():
 
     # Settings + engine
     settings = NexusSettings(
-        quotex=QuotexSettings(email="stub@example.com", password="pw"),
+        quotex=QuotexSettings(email="backtester@nexus.local", password="pw"),
         trading=TradingSettings(base_trade_amount=5.0),
     )
     engine = NexusEngine(settings=settings, demo_mode=True)
 
     meta = MetaStrategy(
-        transformer=StubTransformer(),
-        rl_agent=StubRLAgent(),
-        regime_detector=StubRegimeDetector(),
+        transformer=DeterministicTransformer(),
+        rl_agent=DeterministicRLAgent(),
+        regime_detector=DeterministicRegimeDetector(),
     )
 
     bt = Backtester(window=20, expiration=60)

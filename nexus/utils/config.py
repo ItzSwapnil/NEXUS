@@ -98,6 +98,14 @@ class AISettings(BaseModel):
     learning_rate: float = 0.001
     batch_size: int = 256
     sequence_length: int = 100
+    # Chronos pretrained time-series foundation model
+    # Options: amazon/chronos-2 (Flagship Chronos 2 foundation model, 21 quantiles, GPU accelerated)
+    #          amazon/chronos-t5-large (710M parameters T5 architecture, heavy zero-shot)
+    #          amazon/chronos-bolt-base (Lightweight fast transformer)
+    chronos_model: str = "amazon/chronos-2"
+    chronos_enabled: bool = True
+    chronos_forecast_horizon: int = 5
+    chronos_cache_dir: str = "models/pretrained"
 
 
 class MemorySettings(BaseModel):
@@ -163,6 +171,8 @@ class NexusSettings(BaseSettings):
     debug_mode: bool = False
     # Prominent flag to enable broker auto-login (can be set via .env: AUTO_LOGIN=true)
     auto_login: bool = True
+    api_token: str = ""
+    api_token_required: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_nested_delimiter="__", extra="ignore")
 
@@ -178,19 +188,34 @@ def _env_or(default: str, *keys: str) -> str:
     return default
 
 
+def _env_flag(default: bool, *keys: str) -> bool:
+    value = _env_or("", *keys)
+    if not value:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
 def _build_defaults() -> NexusSettings:
     email = _env_or("", "QUOTEX_EMAIL", "QUOTEX__EMAIL")
     password = _env_or("", "QUOTEX_PASSWORD", "QUOTEX__PASSWORD")
+    user_agent = _env_or("", "QUOTEX_USER_AGENT", "QUOTEX__USER_AGENT")
+    cookies = _env_or("", "QUOTEX_COOKIES", "QUOTEX__COOKIES")
+    ssid = _env_or("", "QUOTEX_SSID", "QUOTEX__SSID")
     return NexusSettings(
         quotex=QuotexSettings(
             email=email,
             password=password,
             demo_mode=True,
             lang="en",
+            user_agent=user_agent or None,
+            cookies=cookies or None,
+            ssid=ssid or None,
         ),
         trading=TradingSettings(),
         ai=AISettings(),
         auto_login=True,
+        api_token=_env_or("", "NEXUS_API_TOKEN", "API_TOKEN"),
+        api_token_required=_env_flag(False, "NEXUS_API_REQUIRE_TOKEN", "API_TOKEN_REQUIRED"),
     )
 
 
@@ -218,9 +243,23 @@ def load_runtime_settings(path: Optional[Union[str, Path]] = None) -> NexusSetti
                     settings.quotex.email = env_settings.quotex.email  # type: ignore[attr-defined]
                 if getattr(env_settings.quotex, "password", ""):
                     settings.quotex.password = env_settings.quotex.password  # type: ignore[attr-defined]
+                if getattr(env_settings.quotex, "user_agent", ""):
+                    settings.quotex.user_agent = env_settings.quotex.user_agent  # type: ignore[attr-defined]
+                if getattr(env_settings.quotex, "cookies", ""):
+                    settings.quotex.cookies = env_settings.quotex.cookies  # type: ignore[attr-defined]
+                if getattr(env_settings.quotex, "ssid", ""):
+                    settings.quotex.ssid = env_settings.quotex.ssid  # type: ignore[attr-defined]
                 # Auto-login may be toggled via env
                 if hasattr(env_settings, "auto_login"):
                     settings.auto_login = bool(env_settings.auto_login)
+                settings.api_token = _env_or(
+                    settings.api_token, "NEXUS_API_TOKEN", "API_TOKEN"
+                )
+                settings.api_token_required = _env_flag(
+                    settings.api_token_required,
+                    "NEXUS_API_REQUIRE_TOKEN",
+                    "API_TOKEN_REQUIRED",
+                )
             except Exception:
                 pass
             return settings

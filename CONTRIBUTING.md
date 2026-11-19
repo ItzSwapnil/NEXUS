@@ -1,55 +1,41 @@
-# Contributing to NEXUS
+# Contributing
 
-Contribution guidelines for the NEXUS autonomous AI trading system.
+Thanks for your interest in improving NEXUS. Focus changes on an existing behavior or a clearly described issue, and keep documentation aligned with the code.
 
-## Quick Start
+## Set up
+
+The project currently requires CPython 3.15 (`>=3.15,<3.16`). Install the development environment with:
+
 ```bash
-uv venv .venv
-.venv\Scripts\activate   # Windows
-uv pip install -e .
-pytest -q   # ensure tests pass
-```
-Target Python: **3.12+**.
-
-## Contribution Guidelines
-- Keep PRs small & focused
-- Add/adjust tests when changing logic
-- Preserve deterministic behaviour for existing tests
-- Avoid adding heavy dependencies without discussion
-- Update documentation for implemented features
-
-## Code Style
-- PEP 8 + type hints
-- Clear, small functions
-- Minimal logging for tests
-
-## Tests
-Run full test suite before opening a PR:
-```bash
-pytest -v
+uv sync --all-extras
 ```
 
-## Commit Messages
-Readable imperative style (e.g., `engine: clamp emotion values`, `docs: prune outdated roadmap`). Squash fixups prior to merge.
+## Before opening a change
 
-## What *Not* To Add (Yet)
-- Large RL / evolution frameworks
-- Complex backtesting engines
-- Cryptic meta-programming abstractions
-- Unused stubs or speculative doc sections
+```bash
+uv run pytest
+uv run ruff check .
+uv run mypy nexus
+```
 
-## Reporting Issues
-Open a GitHub issue with:
-- Summary
-- Reproduction steps (if bug)
-- Expected vs actual
-- Environment (OS, Python, commit hash)
+Add or update tests when changing application behavior. For documentation-only changes, check links, commands, spelling, and rendered Markdown. Avoid adding generated reports, local data, credentials, or trained weights.
 
-## Security
-No secrets should be committed. Current code does not persist credentials; see SECURITY.md for reporting process.
+## Code guidelines
+
+- Keep changes focused and explain user-visible behavior.
+- Prefer clear names, small functions, and type annotations where useful.
+- Preserve deterministic behavior where practical.
+- Avoid new dependencies unless the change needs them.
+- Do not claim a feature, test count, or performance result without checking the current implementation.
+
+## Pull requests
+
+Describe the problem, the change, and how it was verified. Include relevant test results and note any configuration or migration steps. Use a short, imperative commit subject, such as `docs: update setup instructions`.
+
+## Security issues
+
+Do not report vulnerabilities in a public issue. Follow the private reporting instructions in [SECURITY.md](SECURITY.md).
 
 ## License
-By contributing you agree your work is licensed under the project MIT License.
 
----
-Focus on making the existing small core *solid* before expanding scope.
+By submitting a contribution, you agree it is distributed under the project’s [MIT License](LICENSE).

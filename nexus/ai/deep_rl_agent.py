@@ -160,7 +160,7 @@ class PrioritizedReplayBuffer:
     def push(self, transition: Transition, priority: Optional[float] = None):
         """Add transition with priority."""
         if priority is None:
-            priority = max(self.priorities) if self.buffer else 1.0
+            priority = float(max(self.priorities)) if self.buffer else 1.0
 
         if len(self.buffer) < self.capacity:
             self.buffer.append(transition)

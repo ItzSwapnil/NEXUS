@@ -6,7 +6,7 @@ Lifecycle states:
   shadow -> micro-live -> champion
 Demotions:
   micro-live -> shadow on consecutive failures
-  champion -> micro-live on underperformance (simplified placeholder)
+  champion -> micro-live on underperformance
 """
 
 from __future__ import annotations

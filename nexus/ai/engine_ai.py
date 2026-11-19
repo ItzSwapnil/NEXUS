@@ -4,11 +4,12 @@ Author: Swapnil De Sarkar
 Created: 2025
 
 Orchestrates real SOTA AI models:
-1. Market Transformer (Multi-head self-attention time-series predictor)
-2. Attention-LSTM (Bidirectional LSTM with temporal attention & uncertainty estimation)
-3. Deep RL Agent (Dueling Double DQN with Prioritized Experience Replay)
-4. Market Regime Detector (Hurst exponent, ATR volatility & trend classification)
-5. AI Ensemble Manager & MetaStrategy (Dynamic weight adaptation & market memory)
+1. Amazon Chronos 2 (Pretrained time-series foundation model, zero-shot)
+2. Market Transformer (Multi-head self-attention time-series predictor)
+3. Attention-LSTM (Bidirectional LSTM with temporal attention & uncertainty)
+4. Deep RL Agent (Dueling Double DQN with Prioritized Experience Replay)
+5. Market Regime Detector (Hurst exponent, ATR volatility & trend)
+6. AI Ensemble Manager & MetaStrategy (Dynamic weight adaptation)
 
 Continuously learns and evolves online after every trade outcome.
 """
@@ -24,10 +25,12 @@ from typing import Any, Callable, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
+from nexus.ai.chronos_predictor import ChronosPredictor
 from nexus.ai.deep_rl_agent import DeepRLAgent
 from nexus.ai.ensemble_manager import AIEnsembleManager
 from nexus.ai.lstm_predictor import LSTMPredictor, LSTMTrainer
 from nexus.features.feature_engine import get_feature_provider_catalog
+from nexus.intelligence.adaptive import AdaptiveMarketIntelligence
 from nexus.intelligence.checkpointing import ModelCheckpointManager
 from nexus.intelligence.regime_detector import RegimeDetector
 from nexus.intelligence.transformer import MarketPredictor
@@ -77,11 +80,16 @@ class RealAITradingEngine:
     def __init__(self, device: Optional[str] = None) -> None:
         runtime_device = device or get_best_device()
         self.regime_detector = RegimeDetector()
+        # New causal intelligence spine.  Legacy components remain available
+        # for checkpoint migration, while all modes can consume this shared
+        # state/forecast/risk contract during the transition.
+        self.adaptive_intelligence = AdaptiveMarketIntelligence()
         self.transformer_predictor = MarketPredictor(
             lookback_periods=30, feature_dim=20, device=runtime_device
         )
 
         input_dim = 20
+        self.lstm_model: Optional[LSTMPredictor] = None
         try:
             self.lstm_model = LSTMPredictor(input_dim=input_dim, hidden_dim=64, num_layers=2)
         except (ImportError, RuntimeError, TypeError):
@@ -116,7 +124,35 @@ class RealAITradingEngine:
         self.trade_history: List[Dict[str, Any]] = []
         self._asset_stats_path = MODELS_DIR / "ai_asset_stats.json"
         self.asset_stats: Dict[str, Dict[str, Any]] = self._load_asset_stats()
-        logger.info("RealAITradingEngine initialized with Checkpointing & Risk Protection.")
+
+        # Chronos 2 — pretrained foundation model (zero-shot, no training needed)
+        try:
+            from nexus.utils.config import load_runtime_settings
+
+            _cfg = load_runtime_settings()
+            _ai_cfg = _cfg.ai
+            _chronos_enabled = getattr(_ai_cfg, "chronos_enabled", True)
+            _chronos_model = getattr(_ai_cfg, "chronos_model", "amazon/chronos-2")
+            _chronos_horizon = getattr(_ai_cfg, "chronos_forecast_horizon", 5)
+            _chronos_cache = getattr(_ai_cfg, "chronos_cache_dir", "models/pretrained")
+        except Exception:
+            _chronos_enabled = True
+            _chronos_model = "amazon/chronos-2"
+            _chronos_horizon = 5
+            _chronos_cache = "models/pretrained"
+
+        if _chronos_enabled:
+            self.chronos_predictor: Optional[ChronosPredictor] = ChronosPredictor(
+                model_id=_chronos_model,
+                forecast_horizon=_chronos_horizon,
+                cache_dir=_chronos_cache,
+            )
+        else:
+            self.chronos_predictor = None
+
+        logger.info(
+            "RealAITradingEngine initialized with Chronos 2 + Checkpointing + Risk Protection."
+        )
 
     @staticmethod
     def _market_model_path(asset: str) -> Path:
@@ -150,9 +186,9 @@ class RealAITradingEngine:
             probs = {"call": 0.0, "put": 0.0, "hold": 0.0}
             for class_id, probability in zip(classes, probabilities, strict=True):
                 probs[{1: "call", 2: "put", 0: "hold"}.get(class_id, "hold")] = float(probability)
-            signal = max(probs, key=probs.get)
+            signal = max(probs, key=lambda k: probs[k])
             raw_confidence = float(probs[signal])
-            calibrated_confidence = raw_confidence
+            calibrated_confidence = min(0.99, raw_confidence)
             calibration_bands = artifact.get("confidence_bands", [])
             for band in calibration_bands:
                 if float(band.get("lower", 0.0)) <= raw_confidence < float(band.get("upper", 1.01)):
@@ -162,9 +198,9 @@ class RealAITradingEngine:
                         # a small validation sample cannot create false
                         # certainty.  The validation data is strictly later
                         # than the fitting data.
-                        calibrated_confidence = (
+                        calibrated_confidence = min(0.99, (
                             int(band.get("wins", 0)) + raw_confidence * 20.0
-                        ) / (samples + 20.0)
+                        ) / (samples + 20.0))
                     break
             if signal in {"call", "put"} and calibrated_confidence != raw_confidence:
                 remainder = max(0.0, 1.0 - calibrated_confidence)
@@ -177,7 +213,7 @@ class RealAITradingEngine:
             return {
                 "status": "active",
                 "signal": signal,
-                "confidence": round(float(probs[signal]), 4),
+                "confidence": round(min(0.99, float(probs[signal])), 4),
                 "raw_confidence": round(raw_confidence, 4),
                 "calibrated_confidence": round(float(calibrated_confidence), 4),
                 "probabilities": probs,
@@ -238,7 +274,9 @@ class RealAITradingEngine:
 
     def _calibrate_ensemble_confidence(self, asset: str, raw_confidence: float) -> float:
         """Map ensemble scores to observed out-of-sample win rates for a market."""
-        value = max(0.0, min(1.0, float(raw_confidence)))
+        # A displayed confidence is never a literal certainty.  Raw model
+        # scores remain available separately for diagnostics.
+        value = max(0.0, min(0.99, float(raw_confidence)))
         bands = self.get_dynamic_asset_params(asset).get("ensemble_confidence_bands", [])
         for band in bands:
             lower = float(band.get("lower", 0.0))
@@ -250,7 +288,7 @@ class RealAITradingEngine:
                 return max(
                     0.0,
                     min(
-                        1.0,
+                        0.99,
                         (int(band.get("wins", 0)) + value * 20.0) / (samples + 20.0),
                     ),
                 )
@@ -296,6 +334,37 @@ class RealAITradingEngine:
         """Perform full AI multi-model inference and ensemble consensus for an asset."""
         if candles_df is None or len(candles_df) < 20:
             candles_df = generate_synthetic_candles(asset, count=100)
+
+        adaptive_cycle: Dict[str, Any] = {}
+        try:
+            cycle = self.adaptive_intelligence.evaluate_cycle(candles_df, asset)
+            state = cycle["state"]
+            adaptive_cycle = {
+                "regime": state.regime,
+                "regime_probability": state.regime_probability,
+                "novelty_score": state.novelty_score,
+                "is_ood": state.is_ood,
+                "feature_schema": state.feature_schema,
+                "forecast": {
+                    "expected_return": cycle["forecast"].expected_return,
+                    "volatility": cycle["forecast"].volatility,
+                    "probabilities": cycle["forecast"].probabilities,
+                    "quantiles": cycle["forecast"].quantiles,
+                    "calibration_error": cycle["forecast"].calibration_error,
+                },
+                "policy": {
+                    "action": cycle["policy"].action,
+                    "target_exposure": cycle["policy"].target_exposure,
+                    "expected_utility": cycle["policy"].expected_utility,
+                },
+                "risk": {
+                    "allowed": cycle["risk"].allowed,
+                    "exposure": cycle["risk"].exposure,
+                    "reason": cycle["risk"].reason,
+                },
+            }
+        except Exception as err:
+            logger.debug("Adaptive intelligence cycle unavailable: %s", err)
 
         # 1. Feature Engineering (Per-Market Dynamic AI Adaptive Parameters)
         from nexus.utils.technical import get_market_indicator_blueprint
@@ -433,6 +502,21 @@ class RealAITradingEngine:
         except Exception as e:
             logger.debug(f"RL agent action selection note: {e}")
 
+        # 5a. Chronos 2 — pretrained zero-shot forecast (runs before ensemble)
+        chronos_res: Optional[Dict[str, Any]] = None
+        if self.chronos_predictor is not None:
+            try:
+                chronos_res = self.chronos_predictor.predict(candles_df)
+                if chronos_res:
+                    logger.debug(
+                        "Chronos 2 [%s]: signal=%s conf=%.3f",
+                        asset,
+                        chronos_res.get("signal"),
+                        chronos_res.get("confidence", 0.0),
+                    )
+            except Exception as chronos_err:
+                logger.debug("Chronos 2 prediction note: %s", chronos_err)
+
         # 6. AI Ensemble Combination
         # Preserve the transformer's actual class probabilities.  Replacing
         # them with a fixed 0.70/0.30 vote makes the displayed confidence a
@@ -456,6 +540,7 @@ class RealAITradingEngine:
             lstm_pred=lstm_res,
             rl_pred={"action": rl_action_str, "confidence": rl_conf},
             market_model_pred=(market_model_res if market_model_res.get("status") == "active" else None),
+            chronos_pred=chronos_res,
             regime=regime,
         )
 
@@ -465,6 +550,12 @@ class RealAITradingEngine:
 
         raw_confidence = float(ensemble_res.get("confidence", 0.0))
         confidence = self._calibrate_ensemble_confidence(asset, raw_confidence)
+        # The ensemble selects a risk intent from its calibrated probability.
+        # It is an *intent*, not an authorization: the execution layer applies
+        # account, drawdown and PRACTICE safety limits before placing an order.
+        confidence_strength = max(0.0, min(1.0, (confidence - 0.50) / 0.40))
+        calibration_alignment = max(0.25, 1.0 - min(0.75, abs(raw_confidence - confidence)))
+        recommended_risk_fraction = 0.00005 + (0.00095 * confidence_strength * calibration_alignment)
 
         # 7. AI Dynamic Expiration Timeframe Selection (OTC: 5s to 900s / 15m; Real: 60s / 1m to 900s / 15m)
         atr = float(last_row.get("atr", 1.0))
@@ -520,6 +611,7 @@ class RealAITradingEngine:
             "confidence_type": "market-specific out-of-sample calibrated estimate",
             "regime": regime,
             "recommended_expiration": recommended_expiration,
+            "recommended_risk_fraction": round(recommended_risk_fraction, 6),
             "reasoning": reasoning,
             "blueprint": blueprint,
             "active_signals": active_signals,
@@ -535,6 +627,7 @@ class RealAITradingEngine:
             "state_vector": state_vec if "state_vec" in locals() else None,
             "indicator_count": indicator_catalog["total_available"],
             "indicator_catalog": indicator_catalog,
+            "adaptive_intelligence": adaptive_cycle,
         }
 
     async def learn_and_evolve(

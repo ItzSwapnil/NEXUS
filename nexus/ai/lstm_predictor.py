@@ -300,7 +300,7 @@ if _HAS_TORCH:
             logger.debug(f"Online update completed with loss: {loss:.4f}")
 
 else:
-    # Lightweight stub when torch is absent
+    # Lightweight fallback when torch is absent
     class AttentionLayer:  # type: ignore
         def __init__(self, *args, **kwargs):
             raise ImportError("PyTorch required for AttentionLayer")

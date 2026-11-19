@@ -1,98 +1,31 @@
-# Models Directory
+# Local model artifacts
 
-This directory stores trained AI models and their configurations for NEXUS. Model files are generated locally and are intentionally excluded from Git because they can be large, frequently changing, and may contain proprietary training results.
+`models/` holds locally generated weights, checkpoints, and model metadata. These files are ignored by Git because they can be large, change during research, and may include derived training data or results. This README is kept in the repository to document the directory.
 
-## Structure
+## Model code
 
-```
-models/
-├── meta_strategy_champion.json    # Best performing strategy configuration
-├── lstm_predictor.pth             # Trained LSTM model weights
-├── dqn_agent.pth                  # Trained DQN agent weights
-├── ensemble_weights.json          # Ensemble model weights
-├── transformer/                   # Transformer model files
-└── README.md                      # This file
-```
+NEXUS contains several generations of model code:
 
-## Model Files
+- The adaptive research components are in `nexus/intelligence/`. They include feature representation, market state, probabilistic forecasts, risk-aware policy decisions, replay memory, and candidate evaluation.
+- The earlier LSTM, DQN, and ensemble components remain in `nexus/ai/` for existing workflows and checkpoint compatibility.
 
-### LSTM Predictor (`lstm_predictor.pth`)
-- Deep learning model for price prediction
-- Uses attention mechanisms
-- Trained on historical market data
-- Input: 60 timesteps of OHLCV + indicators
-- Output: Direction, confidence, value predictions
+See [Adaptive intelligence](../docs/ADAPTIVE_INTELLIGENCE.md) for the newer research pipeline and [Technical overview](../docs/OVERVIEW.md) for the code map.
 
-### DQN Agent (`dqn_agent.pth`)
-- Reinforcement learning agent
-- Learns optimal trading strategies
-- Dueling architecture with noisy layers
-- Trained through market interaction
+## Training and checkpoints
 
-### Ensemble Weights (`ensemble_weights.json`)
-- Meta-learning model combination
-- Adaptive weighting based on performance
-- Updated during online learning
+The legacy training entry point can be started with:
 
-### Meta Strategy Champion (`meta_strategy_champion.json`)
-- Best performing strategy configuration
-- Stores strategy parameters and performance metrics
-- Used as baseline for new strategies
-
-## Training Models
-
-### Train All Models
 ```bash
-python -m nexus.ai.train_models
+uv run python -m nexus.ai.train_models
 ```
 
-### Train Individual Models
-```bash
-# LSTM Predictor
-python -m nexus.ai.train_models --model lstm
+It uses synthetic data in its example training-data path and may write model checkpoints into `models/`. Review the training code and output paths before running it. Do not assume the resulting checkpoints are suitable for live trading.
 
-# DQN Agent
-python -m nexus.ai.train_models --model dqn
+Other research and training scripts are listed in [scripts/README.md](../scripts/README.md). Script options can change; check `--help` or the source before a long-running job.
 
-# Ensemble Manager
-python -m nexus.ai.train_models --model ensemble
-```
+## Managing artifacts
 
-## Loading Models
-
-```python
-from nexus.ai.lstm_predictor import MarketPredictor
-from nexus.ai.deep_rl_agent import DQNAgent
-
-# Load LSTM
-predictor = MarketPredictor.load("models/lstm_predictor.pth")
-
-# Load DQN
-agent = DQNAgent.load("models/dqn_agent.pth")
-```
-
-## Model Versioning
-
-Models are versioned by:
-- Timestamp in filename (e.g., `lstm_predictor_20251007.pth`)
-- Version metadata stored in model file
-- An external artifact store or backup, rather than Git
-
-## Best Practices
-
-1. **Backup models** before retraining
-2. **Validate on test set** before deployment
-3. **Track performance metrics** in logs
-4. **Use demo mode** to test new models
-5. **Keep champion models** for comparison
-
-## Notes
-
-- Model files (`.pt`, `.pth`, `.joblib`, `.pkl`, `.h5`, `.onnx`) and generated model metadata are excluded from Git
-- Store production models securely
-- Retrain periodically as markets evolve
-- Monitor model performance in production
-
----
-
-For training instructions, see [docs/OVERVIEW.md](../docs/OVERVIEW.md)
+- Keep checkpoints, serialized weights, and generated model metadata out of Git.
+- Back up artifacts you need; deleting this directory can remove local research results.
+- Record the code revision and data provenance alongside any model you intend to reproduce.
+- Evaluate candidates on held-out, time-ordered data before considering promotion.

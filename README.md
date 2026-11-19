@@ -1,234 +1,113 @@
-# NEXUS - Autonomous AI Trading System
+<div align="center">
 
-[![Python 3.12+](https://img.shields.io/badge/python-3.12%7C3.13%7C3.14-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-51%20passing-brightgreen.svg)](tests/)
+# NEXUS
 
-An autonomous trading system combining deep learning, reinforcement learning, and advanced risk management. Features LSTM networks with attention mechanisms, Deep Q-Learning (DQN), and adaptive ensemble learning.
+### Adaptive market intelligence, research, and risk-aware trading tools
 
-## Core Features
+[![Python 3.15](https://img.shields.io/badge/Python-3.15-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-7A5?logo=opensourceinitiative&logoColor=white)](LICENSE)
+[![Author: Swapnil](https://img.shields.io/badge/Author-Swapnil%20De%20Sarkar-6C63FF)](https://github.com/ItzSwapnil)
 
-- **Deep Learning Models**: LSTM with multi-head attention for temporal pattern recognition
-- **Reinforcement Learning**: DQN agent for strategy optimization
-- **Ensemble Learning**: Meta-learning system for adaptive model weighting
-- **Advanced Risk Management**: Kelly Criterion, drawdown protection, position sizing
-- **Multi-Broker Support**: Quotex integration with extensible adapter architecture
+**Research carefully. Manage risk. Learn from the market.**
 
----
+[Getting started](GETTING_STARTED.md) · [Quick install](QUICK_INSTALL.md) · [Architecture](docs/OVERVIEW.md) · [Security](SECURITY.md) · [Contributing](CONTRIBUTING.md)
 
-## ✨ Key Features
-
-### 🚀 Production-Ready AI
-- **LSTM Predictor** with attention mechanisms for sequence learning
-- **Deep Q-Network (DQN)** with dueling architecture and noisy layers
-- **Ensemble Manager** using meta-learning for model combination
-- **Online Learning** - models adapt to market changes in real-time
-
-### 🛡️ Advanced Risk Management
-- Kelly Criterion position sizing
-- Volatility-adjusted trade amounts
-- Multi-layered circuit breakers
-- Drawdown protection
-- Daily/hourly trade limits
-
-### 📈 **Complete Trading System**
-- Multi-broker support (Quotex integrated)
-- Real-time market data processing
-- Technical indicator library (20+)
-- Backtesting with market replay
-- Live trading with demo mode
-
-### 🎨 **Professional Tools**
-- PySide6 GUI dashboard
-- Real-time performance monitoring
-- Comprehensive logging
-- Model training scripts
-- Performance analytics
+</div>
 
 ---
 
-## 🚀 **Quick Start**
+NEXUS is an experimental Python platform for market research and trading-system development. It brings together adaptive forecasting, walk-forward evaluation, risk controls, backtesting, and a Quotex adapter in one project.
+
+## ✨ What’s inside
+
+| | Capability | What it does |
+|---|---|---|
+| 🧠 | **Adaptive intelligence** | Learns sequence representations, estimates outcomes probabilistically, and tracks market regimes and unfamiliar conditions. |
+| 🔬 | **Research workflows** | Runs backtests and walk-forward studies, then evaluates candidates through controlled promotion gates. |
+| 🛡️ | **Risk controls** | Applies exposure and drawdown limits outside the model’s predictions. |
+| 📊 | **Trading tools** | Includes a command-line interface, optional desktop dashboard, and Quotex integration. |
+
+> **Experimental software:** Model and backtest results do not predict future performance. Start in demo mode and review the code and broker requirements before use.
+
+## 🚀 Get started
+
+### Requirements
+
+- CPython **3.15** (`pyproject.toml` requires `>=3.15,<3.16`)
+- [`uv`](https://docs.astral.sh/uv/)
+
+### Install
 
 ```bash
 git clone https://github.com/ItzSwapnil/NEXUS.git
 cd NEXUS
-
-# Create virtual environment
-uv venv
-.venv\Scripts\activate  # Windows
-# source .venv/bin/activate  # Linux/Mac
-
-# Install dependencies
-uv pip install -e ".[ai,gui,ta]"
-
-# Configure
-copy .env.example .env  # Windows
-# cp .env.example .env  # Linux/Mac
-# Edit .env with your credentials
-
-# Run
-python run.py
+uv sync --all-extras
+cp .env.example .env       # Windows PowerShell: copy .env.example .env
 ```
 
----
+Add your local settings to `.env`. The checked-in `.env.example` is a placeholder template; never put broker credentials or tokens in source control.
 
-## 📋 Installation
+### Launch
 
 ```bash
-# Clone repository
-git clone https://github.com/ItzSwapnil/NEXUS.git
-cd NEXUS
-
-# Setup environment
-uv venv
-.venv\Scripts\activate  # Windows
-
-# Install
-uv pip install -e ".[gui,ta]"
-uv pip install torch scikit-learn joblib
-
-# Configure
-copy .env.example .env
-# Edit .env with your credentials
-
-# Run
-python run.py
+uv run python run.py
 ```
 
-For more options, see [QUICK_INSTALL.md](QUICK_INSTALL.md).
-
----
-
-## 🔧 **Configuration**
-
-Edit `.env` file:
-
-```env
-# Broker Credentials
-QUOTEX_EMAIL=your_quotex_email
-QUOTEX_PASSWORD=your_password
-
-# Trading Mode
-TRADING_MODE=demo
-
-# AI/ML Settings
-ENABLE_AI_MODELS=true
-
-# Risk Management
-MAX_DAILY_LOSS=500.0
-USE_KELLY_CRITERION=true
-```
-
-`.env` is for local credentials and must never be committed. Use `.env.example` as the safe configuration template. Generated logs, reports, cached market data, runtime state, and trained model artifacts are also kept out of Git; see [data/README.md](data/README.md) and [models/README.md](models/README.md).
-
----
-
-## 📖 **Usage**
-
-### GUI Mode
-```bash
-python run.py
-# Select option 1 for GUI
-```
-
-### CLI Mode
-```bash
-python -m nexus.cli
-```
-
-### Backtest
-```bash
-python -m nexus.main --backtest
-```
-
-### Train Models
-```bash
-python -m nexus.ai.train_models
-```
-
----
-
-## 🧪 **Testing**
+<details>
+<summary><strong>Other ways to run NEXUS</strong></summary>
 
 ```bash
-# Run all tests
-pytest -v
-
-# With coverage
-pytest --cov=nexus --cov-report=html
+uv run python -m nexus.cli                         # Command-line interface
+uv run python -m nexus.main --web --demo           # Web dashboard in demo mode
+uv run python -m nexus.main --cli --backtest --demo # Demo backtest
 ```
 
----
+</details>
 
-## 📚 **Documentation**
+## 🧭 Project guide
 
-- [Getting Started Guide](GETTING_STARTED.md)
-- [Technical Overview](docs/OVERVIEW.md)
-- [Security Policy](SECURITY.md)
-- [Contributing Guidelines](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Changelog](CHANGELOG.md)
+| Guide | Find here |
+|---|---|
+| [Getting started](GETTING_STARTED.md) | Installation and first steps |
+| [Technical overview](docs/OVERVIEW.md) | Modules and system architecture |
+| [Adaptive intelligence](docs/ADAPTIVE_INTELLIGENCE.md) | Forecasting, replay, and evaluation pipeline |
+| [AppDeploy notes](docs/APPDEPLOY.md) | Deployment boundaries and API access |
+| [Utility scripts](scripts/README.md) | Research, training, and maintenance commands |
+| [Security policy](SECURITY.md) | Credential handling and vulnerability reporting |
+| [Contributing](CONTRIBUTING.md) | How to propose and prepare changes |
 
----
+## 🔬 Research and demo runs
 
-## 🎯 **Performance**
+Run a bounded payout-filtered research screen:
 
-Typical model performance (after training):
-- **LSTM Predictor**: 65-70% directional accuracy
-- **DQN Agent**: Positive expected value through learned policies  
-- **Ensemble**: 5-10% improvement over individual models
+```bash
+uv run python scripts/run_batched_research.py --min-payout 80
+```
 
-*Past performance does not guarantee future results.*
+This runner logs in to Quotex and downloads broker data, then evaluates it locally; it records zero orders. Generated reports and local research data are kept out of Git. The optional autonomous demo loop can submit broker-backed **PRACTICE** trades when its configured conditions allow. Review [the runner](scripts/run_autonomous_demo_loop.sh) and its requirements before starting it. The standard launch does not start this loop.
 
----
+## 🧑‍💻 Development
 
-## 📄 **License**
+Install the project and development extras with `uv sync --all-extras`, then run the suite:
 
-MIT License - see [LICENSE](LICENSE) for details.
+```bash
+uv run pytest
+```
 
----
+## 🔒 Local files
 
-## ⚠️ **Disclaimer**
+`.env`, browser sessions, caches, reports, databases, logs, and trained weights are local runtime artifacts and are ignored by Git. See [data/README.md](data/README.md) and [models/README.md](models/README.md) for details. Keep `.env.example` limited to safe placeholders.
 
-**IMPORTANT**: NEXUS is for educational and research purposes only. Trading involves substantial risk of loss. Always:
+## ⚠️ Disclaimer
 
-- Start with demo mode
-- Use proper risk management
-- Never trade with money you can't afford to lose
-- Comply with local regulations
+NEXUS is intended for software development and research; it is not financial advice. Trading involves risk and can result in loss. Backtests and model outputs do not guarantee future results. Follow applicable laws and broker terms.
 
-The AI models are experimental and do not constitute financial advice.
+## 📄 License
 
----
+MIT License. See [LICENSE](LICENSE).
 
-## 🤝 **Contributing**
+<div align="center">
 
-I welcome contributions to NEXUS! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+**Made by [Swapnil De Sarkar](https://github.com/ItzSwapnil)**
 
-### Ways to Contribute
-- Report bugs and issues
-- Suggest new features
-- Submit pull requests
-- Improve documentation
-- Share your trading strategies
-
----
-
-## 💬 **Support**
-
-If you find this project helpful, please:
-- ⭐ Star the repository
-- 🐛 Report issues
-- 📖 Improve documentation
-- 🔀 Submit pull requests
-
----
-
-## 📧 **Contact**
-
-- **Author**: Swapnil De Sarkar
-- **GitHub**: [@ItzSwapnil](https://github.com/ItzSwapnil/NEXUS)
-
----
-
-**Built with ❤️ for the algorithmic trading community**
+</div>

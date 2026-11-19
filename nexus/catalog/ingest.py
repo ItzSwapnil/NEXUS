@@ -1,9 +1,13 @@
-"""Market catalog ingestion (stable placeholder + optional live fetch).
+"""Market catalog ingestion (live-only from broker).
 
 Purpose:
-- Provide deterministic placeholder markets for tests
-- Expose get_market_catalog() and get_market_by_symbol()
-- Optionally fetch live markets via adapter when explicitly called
+- Catalog starts empty — no hardcoded markets or fabricated payouts
+- ``fetch_live_catalog(adapter)`` is the sole mechanism to populate the catalog
+  with real market data and dynamic payouts from the broker
+- The adapter session is **always refreshed** (re-login) before querying markets
+  so the returned list reflects the broker's current live state
+- Expose ``get_market_catalog()`` and ``get_market_by_symbol()`` for read access
+- ``catalog_is_populated()`` lets callers check whether live broker data has been loaded
 """
 
 from __future__ import annotations
@@ -29,48 +33,15 @@ class Market:
         return float(self.display_payout_percent)
 
 
-# Comprehensive market catalog with active payout rates
-_PLACEHOLDER: List[Market] = [
-    # Major Forex Pairs
-    Market("EURUSD", "Forex", 88.0, payout_per_expiration={"60": 88.0, "120": 87.0, "300": 85.0}),
-    Market("GBPUSD", "Forex", 85.0, payout_per_expiration={"60": 85.0, "120": 84.0, "300": 83.0}),
-    Market("USDJPY", "Forex", 78.0, payout_per_expiration={"60": 78.0, "120": 77.0, "300": 76.0}),
-    Market("AUDUSD", "Forex", 82.0, payout_per_expiration={"60": 82.0, "120": 81.0, "300": 80.0}),
-    Market("USDCAD", "Forex", 83.0, payout_per_expiration={"60": 83.0, "120": 82.0}),
-    Market("USDCHF", "Forex", 81.0, payout_per_expiration={"60": 81.0, "120": 80.0}),
-    Market("NZDUSD", "Forex", 80.0, payout_per_expiration={"60": 80.0, "120": 79.0}),
-    # Cross Forex Pairs
-    Market("EURGBP", "Forex", 84.0, payout_per_expiration={"60": 84.0}),
-    Market("EURJPY", "Forex", 86.0, payout_per_expiration={"60": 86.0}),
-    Market("GBPJPY", "Forex", 87.0, payout_per_expiration={"60": 87.0}),
-    Market("AUDJPY", "Forex", 82.0, payout_per_expiration={"60": 82.0}),
-    Market("EURAUD", "Forex", 83.0, payout_per_expiration={"60": 83.0}),
-    Market("GBPAUD", "Forex", 84.0, payout_per_expiration={"60": 84.0}),
-    Market("CADJPY", "Forex", 82.0, payout_per_expiration={"60": 82.0}),
-    Market("CHFJPY", "Forex", 81.0, payout_per_expiration={"60": 81.0}),
-    # High-Yield OTC Markets
-    Market("EURUSD_otc", "Forex", 92.0, otc=True, payout_per_expiration={"60": 92.0, "120": 90.0}),
-    Market("GBPUSD_otc", "Forex", 90.0, otc=True, payout_per_expiration={"60": 90.0, "120": 88.0}),
-    Market("USDJPY_otc", "Forex", 89.0, otc=True, payout_per_expiration={"60": 89.0, "120": 87.0}),
-    Market("AUDUSD_otc", "Forex", 88.0, otc=True, payout_per_expiration={"60": 88.0}),
-    Market("USDCAD_otc", "Forex", 87.0, otc=True, payout_per_expiration={"60": 87.0}),
-    Market("NZDUSD_otc", "Forex", 86.0, otc=True, payout_per_expiration={"60": 86.0}),
-    Market("EURGBP_otc", "Forex", 88.0, otc=True, payout_per_expiration={"60": 88.0}),
-    Market("EURJPY_otc", "Forex", 91.0, otc=True, payout_per_expiration={"60": 91.0}),
-    Market("GBPJPY_otc", "Forex", 92.0, otc=True, payout_per_expiration={"60": 92.0}),
-    # Commodities
-    Market("XAUUSD", "Commodity", 85.0, payout_per_expiration={"60": 85.0}),
-    Market("XAGUSD", "Commodity", 81.0, payout_per_expiration={"60": 81.0}),
-    Market("USOIL", "Commodity", 82.0, payout_per_expiration={"60": 82.0}),
-    Market("XAUUSD_otc", "Commodity", 90.0, otc=True, payout_per_expiration={"60": 90.0}),
-    # Crypto Assets
-    Market("BTCUSD", "Crypto", 85.0, payout_per_expiration={"60": 85.0}),
-    Market("ETHUSD", "Crypto", 84.0, payout_per_expiration={"60": 84.0}),
-    Market("SOLUSD", "Crypto", 82.0, payout_per_expiration={"60": 82.0}),
-    Market("BTCUSD_otc", "Crypto", 90.0, otc=True, payout_per_expiration={"60": 90.0}),
-]
-_symbol_index: Dict[str, Market] = {m.symbol: m for m in _PLACEHOLDER}
+# Live catalog — starts empty; populated exclusively by fetch_live_catalog()
+_catalog: List[Market] = []
+_symbol_index: Dict[str, Market] = {}
 _catalog_lock = asyncio.Lock()
+
+
+def catalog_is_populated() -> bool:
+    """Return True if the catalog has been populated with live broker data."""
+    return len(_catalog) > 0
 
 
 def get_market_by_symbol(symbol: str) -> Optional[Market]:
@@ -94,7 +65,7 @@ async def get_market_catalog(
                 else None,
                 metadata=dict(m.metadata),
             )
-            for m in _PLACEHOLDER
+            for m in _catalog
         ]
 
 
@@ -137,11 +108,32 @@ def _extract_payout_from_record(rec: dict[str, Any]) -> float:
 async def fetch_live_catalog(
     adapter: Any,
 ) -> List[Market]:  # pragma: no cover (network interaction)
-    """Replace placeholder with live markets from adapter if possible.
+    """Populate the catalog with live markets from the broker adapter.
+
+    This is the **only** way to load market data into the catalog.
+
+    The adapter session is always refreshed before asset queries are made.
+    ``_ensure_authenticated()`` is preferred (re-uses an active WebSocket);
+    if that method is absent, ``login()`` is called directly.  A failure
+    to authenticate is raised immediately — callers must handle it rather
+    than silently receiving an empty catalog.
 
     Adapter may expose get_assets(), get_available_assets(), or get_available_assets_async().
     Prefer enriched methods that include payout when available.
     """
+    # --- Step 0: guarantee a fresh, authenticated broker session ---
+    if hasattr(adapter, "_ensure_authenticated"):
+        authed = await adapter._ensure_authenticated()
+    elif hasattr(adapter, "login"):
+        login_result = adapter.login()
+        authed = await login_result if asyncio.iscoroutine(login_result) else bool(login_result)
+    else:
+        authed = True  # adapter manages its own auth (e.g. HTTP-token based)
+
+    if not authed:
+        raise RuntimeError(
+            "fetch_live_catalog: broker authentication failed — cannot retrieve live markets."
+        )
     # 1) Prefer enriched API exposing payout
     enriched = None
     for name in ("get_assets_with_payouts_async", "get_assets_with_payouts"):
@@ -250,9 +242,9 @@ async def fetch_live_catalog(
         # Only replace the catalog if at least one positive payout present
         if deduped_markets and any(m.display_payout_percent > 0 for m in deduped_markets):
             async with _catalog_lock:
-                global _PLACEHOLDER, _symbol_index
-                _PLACEHOLDER = deduped_markets
-                _symbol_index = {m.symbol: m for m in _PLACEHOLDER}
+                global _catalog, _symbol_index
+                _catalog = deduped_markets
+                _symbol_index = {m.symbol: m for m in _catalog}
         return await get_market_catalog()
     except Exception:
         return await get_market_catalog()
@@ -262,6 +254,7 @@ __all__ = [
     "Market",
     "get_market_catalog",
     "get_market_by_symbol",
+    "catalog_is_populated",
     "refresh_catalog",
     "fetch_live_catalog",
 ]

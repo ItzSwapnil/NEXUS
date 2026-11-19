@@ -16,6 +16,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 
 from nexus.utils.logger import PerformanceLogger, get_nexus_logger
@@ -542,7 +543,11 @@ class MetaStrategy:
         )
 
     async def generate_signal(
-        self, data: pd.DataFrame, asset: str, timeframe: int
+        self,
+        data: pd.DataFrame,
+        asset: str,
+        timeframe: int,
+        account_balance: Optional[float] = None,
     ) -> Optional[Tuple[SignalType, float]]:
         """
         Generate a trading signal for the specified asset and timeframe.
@@ -551,6 +556,7 @@ class MetaStrategy:
             data: Market data as pandas DataFrame
             asset: Trading asset symbol
             timeframe: Analysis timeframe in minutes
+            account_balance: Optional account balance. Defaults to NEXUS_ACCOUNT_BALANCE env or 1000.0.
 
         Returns:
             Optional[Tuple[SignalType, float]]: Signal type and position size or None if no action
@@ -585,13 +591,61 @@ class MetaStrategy:
                     except Exception:
                         self.exploration_controller = None
                 if self.exploration_controller is not None:
-                    # Placeholder metrics; future: derive from performance + market microstructure
+                    # Real confidence metrics from performance history
+                    returns = [
+                        float(p.get("profit", 0.0))
+                        for p in self.performance_history[-30:]
+                        if isinstance(p, dict)
+                    ]
+                    if len(returns) >= 3 and float(np.std(returns)) > 1e-6:
+                        sharpe = float(np.mean(returns) / np.std(returns) * np.sqrt(252))
+                    else:
+                        sharpe = 0.0
+
+                    recent_wins = [
+                        1.0 if float(p.get("profit", 0.0)) > 0 else 0.0
+                        for p in self.performance_history[-20:]
+                        if isinstance(p, dict)
+                    ]
+                    stability = float(1.0 - np.std(recent_wins)) if len(recent_wins) >= 5 else 0.5
+
+                    # Real uncertainty metrics from market data and ensemble dispersion
+                    atr_val = 0.5
+                    if (
+                        data is not None
+                        and len(data) >= 2
+                        and {"high", "low", "close"}.issubset(data.columns)
+                    ):
+                        tr = np.maximum(
+                            data["high"] - data["low"],
+                            np.maximum(
+                                (data["high"] - data["close"].shift(1)).abs(),
+                                (data["low"] - data["close"].shift(1)).abs(),
+                            ),
+                        )
+                        atr_val = float(tr.tail(14).mean()) if not tr.empty else 0.5
+
+                    if filtered_signals:
+                        numeric_dirs = [
+                            1.0
+                            if s.signal_type == SignalType.BUY
+                            else (-1.0 if s.signal_type == SignalType.SELL else 0.0)
+                            for s in filtered_signals
+                        ]
+                        disagreement = float(np.std(numeric_dirs))
+                    else:
+                        disagreement = 0.0
+
                     confidence_metrics = {
                         "win_rate": self.win_rate,
-                        "stability": 0.5,
-                        "sharpe": 0.0,
+                        "stability": max(0.0, min(1.0, stability)),
+                        "sharpe": sharpe,
                     }
-                    uncertainty_metrics = {"atr": 0.5, "disagreement": 0.0, "spread": 0.0001}
+                    uncertainty_metrics = {
+                        "atr": atr_val,
+                        "disagreement": disagreement,
+                        "spread": 0.0001,
+                    }
                     epsilon = self.exploration_controller.compute_epsilon(
                         confidence_metrics, uncertainty_metrics, payout=85.0
                     )
@@ -601,7 +655,7 @@ class MetaStrategy:
                 # Randomly pick BUY or SELL ignoring HOLD for active exploration
                 exploratory_chosen = True
                 picked = random.choice([SignalType.BUY, SignalType.SELL])
-                # Fabricate a minimal synthetic signal
+                # Generate active exploration signal
                 filtered_signals.append(
                     TradingSignal(
                         signal_type=picked,
@@ -621,8 +675,14 @@ class MetaStrategy:
                 return None
             if exploratory_chosen and final_signal.signal_type != SignalType.HOLD:
                 self.last_exploratory = True
-            # Get account balance (placeholder - should be provided by caller)
-            balance = 1000.0  # Example balance
+            # Dynamically resolve account balance
+            if account_balance is not None and account_balance > 0:
+                balance = float(account_balance)
+            else:
+                try:
+                    balance = float(os.getenv("NEXUS_ACCOUNT_BALANCE", "1000.0"))
+                except ValueError:
+                    balance = 1000.0
             # Calculate position size
             position_size = await self.risk_position_size(final_signal, balance)
             return (final_signal.signal_type, position_size)

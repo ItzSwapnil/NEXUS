@@ -60,6 +60,13 @@ class QuotexAdapter:
         except Exception:
             pass
 
+    async def close(self) -> None:
+        """Close the underlying broker client before reconnecting."""
+        try:
+            await self._real.close()
+        except Exception:
+            pass
+
     async def connect(self) -> bool:
         """Perform asynchronous login against Quotex."""
         try:

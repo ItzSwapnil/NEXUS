@@ -1,6 +1,6 @@
 import pytest
 
-from nexus.catalog.ingest import get_market_by_symbol
+from nexus.catalog.ingest import fetch_live_catalog, get_market_by_symbol
 from nexus.core.engine import NexusEngine
 from nexus.payouts.fetch import (
     get_payout_for_market,
@@ -9,6 +9,19 @@ from nexus.payouts.fetch import (
     set_payout_override,
 )
 from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
+
+
+class MockBrokerAdapterWithPayouts:
+    async def get_assets_with_payouts_async(self):
+        return [
+            {"symbol": "EURUSD", "type": "Forex", "payout": 88.0, "active": True},
+            {"symbol": "USDJPY", "type": "Forex", "payout": 78.0, "active": True},
+        ]
+
+
+@pytest.fixture(autouse=True)
+async def setup_live_catalog():
+    await fetch_live_catalog(MockBrokerAdapterWithPayouts())
 
 
 def test_payout_lookup_and_override():

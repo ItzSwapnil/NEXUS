@@ -2,11 +2,18 @@ import asyncio
 import os
 import sys
 
-from PySide6.QtWidgets import QApplication
+try:  # pragma: no cover - optional GUI dependency
+    from PySide6.QtWidgets import QApplication
+except Exception:  # pragma: no cover - GUI unavailable in headless environments
+    QApplication = None  # type: ignore[misc,assignment]
 
 from nexus.core.engine import NexusEngine
-from nexus.gui.main_window import NexusMainWindow
 from nexus.utils.config import load_config
+
+try:  # pragma: no cover - optional GUI dependency
+    from nexus.gui.main_window import NexusMainWindow
+except Exception:  # pragma: no cover - gracefully degrade if GUI stack is unavailable
+    NexusMainWindow = None  # type: ignore[misc,assignment]
 
 
 def _configure_qt_platform() -> None:
@@ -26,6 +33,11 @@ def _configure_qt_platform() -> None:
 
 def launch_nexus_gui(engine: NexusEngine | None = None):
     """Launch the PySide6 GUI with an optional pre-initialized engine."""
+    if QApplication is None or NexusMainWindow is None:
+        raise RuntimeError(
+            "PySide6 GUI dependencies are not installed. Install the 'gui' extra to use the graph UI."
+        )
+
     _configure_qt_platform()
     if engine is None:
         config = load_config()
@@ -39,6 +51,10 @@ def launch_nexus_gui(engine: NexusEngine | None = None):
 
 
 if __name__ == "__main__":
+    if QApplication is None or NexusMainWindow is None:
+        raise RuntimeError(
+            "PySide6 GUI dependencies are not installed. Install the 'gui' extra to use the graph UI."
+        )
     _configure_qt_platform()
     config = load_config()
     engine = NexusEngine(settings=config)

@@ -29,21 +29,6 @@ from nexus.utils.logger import get_nexus_logger
 
 logger = get_nexus_logger("scripts.test_otc_trades")
 
-# Default list of common OTC assets to test if live discovery returns empty
-DEFAULT_OTC_MARKETS: List[str] = [
-    "EURUSD_otc",
-    "GBPUSD_otc",
-    "USDJPY_otc",
-    "AUDUSD_otc",
-    "USDCAD_otc",
-    "NZDUSD_otc",
-    "EURGBP_otc",
-    "EURJPY_otc",
-    "GBPJPY_otc",
-    "XAUUSD_otc",
-    "BTCUSD_otc",
-]
-
 
 def parse_order_response(resp: Any) -> Tuple[bool, str, Optional[str]]:
     """Parse and normalize order execution response from the broker adapter."""
@@ -193,14 +178,13 @@ async def discover_otc_markets(adapter: QuotexAdapter) -> Tuple[List[str], Dict[
     except Exception as e:
         logger.debug(f"Catalog ingest check note: {e}")
 
-    # 4. Fallback to default list if nothing was found
+    # 4. No markets found — fail loudly: caller must run login_browser.py first
     if not discovered:
-        logger.info("Using default OTC markets list for testing.")
-        for d in DEFAULT_OTC_MARKETS:
-            norm = normalize_otc_symbol(d)
-            if norm not in seen:
-                seen.add(norm)
-                discovered.append(norm)
+        raise RuntimeError(
+            "discover_otc_markets: live broker returned no OTC markets after "
+            "authentication. Run 'uv run python scripts/login_browser.py' to "
+            "capture a fresh session, then retry."
+        )
 
     return discovered, enriched_map
 

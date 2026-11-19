@@ -1,243 +1,96 @@
-# Getting Started with NEXUS
+# Getting started
 
-Quick setup guide for the autonomous AI trading system.
+This guide takes you from a fresh checkout to a local NEXUS run. For a shorter overview, see [README.md](README.md); for advanced install options, see [QUICK_INSTALL.md](QUICK_INSTALL.md).
 
-## Prerequisites
+## Requirements
 
-- Python 3.12 or higher
-- Windows, Linux, or macOS
-- UV package manager (recommended) or pip
+- CPython 3.15 (`pyproject.toml` requires `>=3.15,<3.16`)
+- [`uv`](https://docs.astral.sh/uv/)
+- Windows, macOS, or Linux
 
-## Installation
+## Install
 
-### Quick Setup
+Install `uv` using its [official instructions](https://docs.astral.sh/uv/getting-started/installation/), then clone and sync the project:
 
 ```bash
-# 1. Install UV package manager
-# Windows (PowerShell):
-irm https://astral.sh/uv/install.ps1 | iex
-
-# Linux/macOS:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# 2. Clone and setup
 git clone https://github.com/ItzSwapnil/NEXUS.git
 cd NEXUS
-
-# 3. Create environment and install
-uv venv
-.venv\Scripts\activate  # Windows
-uv pip install -e ".[gui,ta]"
-
-# 4. Configure
-copy .env.example .env  # Edit with your broker credentials
-
-# 5. Run
-python run.py
+uv sync --all-extras
 ```
 
-### Configure credentials
+`uv sync --all-extras` creates or updates the local `.venv` and installs all declared project extras.
 
-On Windows:
+## Configure local settings
 
-```powershell
-copy .env.example .env
-```
-
-On Linux/macOS:
+Create a private local configuration file:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your local settings. It is ignored by Git and must never be committed. Keep `.env.example` free of real credentials.
+In Windows PowerShell, use:
 
-## Configuration
-
-Edit `.env` file with your settings:
-
-```env
-# Broker Credentials
-QUOTEX_EMAIL=your_quotex_email
-QUOTEX_PASSWORD=your_password
-
-# Trading Mode (always start with demo!)
-TRADING_MODE=demo
-
-# Trading Settings
-DEFAULT_ASSET=EURUSD
-BASE_TRADE_AMOUNT=10.0
-DEFAULT_EXPIRATION=60
-
-# AI/ML Settings
-ENABLE_AI_MODELS=true
-MODEL_TRAINING_ENABLED=false
-
-# Risk Management
-MAX_DAILY_LOSS=500.0
-MAX_DRAWDOWN_PERCENT=20.0
-USE_KELLY_CRITERION=true
+```powershell
+Copy-Item .env.example .env
 ```
 
-## First Steps
+Edit `.env` for your setup. The template contains placeholders only. Never commit broker credentials, cookies, session IDs, or API tokens. NEXUS defaults to demo mode, but broker-backed demo features can still connect to your account.
 
-### 1. Test the Installation
+## Run NEXUS
+
+Launch the interactive menu:
 
 ```bash
-# Run tests to verify everything works
-pytest -v
+uv run python run.py
 ```
 
-### 2. Launch Demo Mode
+Or start a mode directly:
 
 ```bash
-# Using launcher (interactive menu)
-python run.py
-
-# Or directly
-python -m nexus.main --demo
+uv run python -m nexus.main --web --demo             # Web dashboard
+uv run python -m nexus.main --cli --demo --stats     # CLI and statistics
+uv run python -m nexus.main --cli --backtest --demo  # Backtest
 ```
 
-### 3. Run a Backtest
+The web dashboard is the default for `nexus.main`; the `--demo` flag is also the default. A demo run is not necessarily offline: workflows that use broker data or place PRACTICE trades still communicate with the broker.
+
+## Verify the setup
+
+Run the project’s readiness script and test suite:
 
 ```bash
-# Test strategies on historical data
-python -m nexus.main --backtest
+uv run python scripts/verify_project.py
+uv run pytest
 ```
 
-### 4. Train AI Models (Optional)
+The verification script imports the core dependencies and initializes selected models and the engine. It does not validate broker credentials or guarantee that every optional feature works on every host.
+
+## Data and generated files
+
+Local caches, logs, reports, browser sessions, databases, and trained weights are ignored by Git. They can contain sensitive or account-related information, so inspect and sanitize them before sharing. See [data/README.md](data/README.md) and [models/README.md](models/README.md).
+
+The workspace cleaner removes caches and temporary files. Review its behavior before using it:
 
 ```bash
-# Train the deep learning models
-python -m nexus.ai.train_models
+uv run python scripts/clean_workspace.py
 ```
-
-## Usage Modes
-
-### GUI Mode
-```bash
-python -m nexus.main --demo
-```
-- Visual dashboard
-- Real-time monitoring
-- Easy to use
-
-### CLI Mode
-```bash
-python -m nexus.cli
-```
-- Command-line interface
-- Performance statistics
-- Lightweight
-
-### Backtest Mode
-```bash
-python -m nexus.main --backtest
-```
-- Test strategies on historical data
-- Performance analysis
-- No real trading
-
-## Common Tasks
-
-### Update Dependencies
-```bash
-uv pip install --upgrade -e ".[ai,gui,ta]"
-```
-
-### View Logs
-```bash
-# Latest log file
-# Windows (PowerShell):
-Get-Content logs\nexus_*.log -Tail 50
-
-# Linux/macOS:
-tail -f logs/nexus_*.log
-```
-
-Logs are local runtime output and are ignored by Git. Remove or sanitize them before sharing, because requests, errors, or account-related details may be recorded.
-
-### Clean Project
-```bash
-# Using utility script
-python scripts/clean_workspace.py
-
-# Or via launcher
-python run.py  # Select clean option
-```
-
-The project also ignores local caches, reports, SQLite databases, session files, temporary files, and generated model artifacts. These files remain available locally but should not be added with `git add -f`.
-
-## Safety First
-
-⚠️ **IMPORTANT SAFETY GUIDELINES:**
-
-1. **Always start with DEMO mode**
-2. **Never trade with money you can't afford to lose**
-3. **Test strategies thoroughly before live trading**
-4. **Set appropriate risk limits in .env**
-5. **Monitor trades regularly**
-6. **Keep credentials secure**
 
 ## Troubleshooting
 
-### Virtual Environment Issues
+### Recreate the environment
+
 ```bash
-# Recreate virtual environment
-# Windows (PowerShell):
-Remove-Item .venv -Recurse -Force
-
-# Linux/macOS:
-rm -rf .venv
-
-# Reinstall
-python setup.py
+uv sync --all-extras --reinstall
 ```
 
-### Import Errors
-```bash
-# Reinstall in development mode
-uv pip install -e ".[ai,gui,ta]"
-```
+If needed, remove `.venv` first (`Remove-Item .venv -Recurse -Force` in PowerShell, or `rm -rf .venv` on macOS/Linux), then run the sync command again.
 
-### Test Failures
-```bash
-# Run tests with verbose output
-pytest -v --tb=short
-```
+### Find local logs
 
-### UV Not Found
-```bash
-# Install UV
-# Windows (PowerShell):
-irm https://astral.sh/uv/install.ps1 | iex
+NEXUS writes local log files under `logs/`. Review them before sharing because errors or account-related details may be included.
 
-# Linux/macOS:
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+### Get help
 
-## Next Steps
-
-1. Read the [README.md](README.md) for detailed features
-2. Explore the [docs/OVERVIEW.md](docs/OVERVIEW.md) to understand the system
-3. Start with demo mode and small trade amounts
-4. Monitor performance and adjust settings
-5. Review [CONTRIBUTING.md](CONTRIBUTING.md) to contribute
-
-## Getting Help
-
-- **Documentation**: See [docs/](docs/) directory
-- **Overview**: [docs/OVERVIEW.md](docs/OVERVIEW.md)
-- **Security**: [SECURITY.md](SECURITY.md)
-- **Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md)
-
-For issues or questions:
-1. Check existing documentation
-2. Review test output for errors
-3. Check log files in `logs/` directory
-4. Ensure .env is properly configured
-5. Open an issue on GitHub
-
----
-
-**Welcome to NEXUS!** Start with demo mode and explore the features safely.
+- Read the [technical overview](docs/OVERVIEW.md) and [script guide](scripts/README.md).
+- Check the [security policy](SECURITY.md) before reporting security issues.
+- Review [Contributing](CONTRIBUTING.md) before proposing a code change.

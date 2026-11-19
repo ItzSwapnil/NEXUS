@@ -9,8 +9,8 @@ try:  # Optional: native indicators remain available without TA-Lib.
     import talib
     from talib import abstract as talib_abstract
 except ImportError:  # pragma: no cover - depends on local installation
-    talib = None
-    talib_abstract = None
+    talib: Any = None  # type: ignore[no-redef]
+    talib_abstract: Any = None  # type: ignore[no-redef]
 
 
 def exponential_moving_average(data: np.ndarray, span: int) -> np.ndarray:
@@ -281,17 +281,21 @@ def add_talib_features(data: pd.DataFrame, max_functions: int = 200) -> pd.DataF
               {"open", "high", "low", "close", "volume"}}
     for name in list(talib.get_functions())[:max_functions]:
         try:
-            fn = talib_abstract.Function(name)
-            required = set(getattr(fn, "input_names", {}).keys())
+            fn = getattr(talib_abstract, "Function", None)
+            if fn is None:
+                break
+            indicator_fn = fn(name)
+            required = set(getattr(indicator_fn, "input_names", {}).keys())
             if not required.issubset(inputs):
                 continue
-            output = fn(inputs)
+            output = indicator_fn(inputs)
+            values: Any
             if isinstance(output, dict):
-                values = output.items()
+                values = list(output.items())
             elif isinstance(output, (tuple, list)):
-                values = ((f"output_{idx}", value) for idx, value in enumerate(output))
+                values = [(f"output_{idx}", value) for idx, value in enumerate(output)]
             else:
-                values = (("value", output),)
+                values = [("value", output)]
             for suffix, value in values:
                 arr = np.asarray(value, dtype=float)
                 if arr.ndim != 1 or len(arr) != len(result):

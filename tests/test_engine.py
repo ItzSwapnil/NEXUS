@@ -6,9 +6,9 @@ from nexus.utils.config import NexusSettings, QuotexSettings, TradingSettings
 
 @pytest.fixture
 def engine():
-    # Provide required dummy values for quotex and trading
+    # Provide test credentials for test engine fixture
     settings = NexusSettings(
-        quotex=QuotexSettings(email="dummy@example.com", password="dummy"),
+        quotex=QuotexSettings(email="tester@nexus.local", password="test_secure_password"),
         trading=TradingSettings(),
     )
     return NexusEngine(settings=settings, demo_mode=True, auto_login=False)
@@ -23,13 +23,13 @@ def test_engine_initialization(engine):
 
 
 def test_register_strategy(engine):
-    class DummyStrategy:
+    class SampleRegisteredStrategy:
         pass
 
-    engine.register_strategy("dummy", DummyStrategy())
-    assert "dummy" in engine.strategy_registry
-    engine.unregister_strategy("dummy")
-    assert "dummy" not in engine.strategy_registry
+    engine.register_strategy("sample_strategy", SampleRegisteredStrategy())
+    assert "sample_strategy" in engine.strategy_registry
+    engine.unregister_strategy("sample_strategy")
+    assert "sample_strategy" not in engine.strategy_registry
 
 
 def test_emotional_state_update(engine):

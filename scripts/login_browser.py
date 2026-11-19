@@ -2,7 +2,8 @@
 
 Launches a visible Chromium browser window so the user can interactively complete
 sign-in and Cloudflare verification. Captures the resulting session cookies and SSID
-token directly into .env.
+token directly into .env, then immediately refreshes the broker connection and
+populates the live market catalog — no separate step needed.
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ async def run_interactive_login() -> None:
             )
             page = await context.new_page()
 
-            sign_in_url = "https://qxbroker.com/en/sign-in"
+            sign_in_url = "https://quotex.com/en/sign-in"
             print(f"Navigating to {sign_in_url}...")
             await page.goto(sign_in_url)
 
@@ -150,7 +151,7 @@ async def run_interactive_login() -> None:
             captured_ws_token = ""
 
             def on_websocket(ws: Any) -> None:
-                def on_framesent(payload: Any) -> None:
+                def on_frame(payload: Any) -> None:
                     nonlocal captured_ws_token
                     try:
                         txt = (
@@ -158,7 +159,7 @@ async def run_interactive_login() -> None:
                             if isinstance(payload, str)
                             else payload.decode("utf-8", errors="ignore")
                         )
-                        if "authorization" in txt:
+                        if "authorization" in txt or "token" in txt or "session" in txt:
                             idx = txt.find("{")
                             end_idx = txt.rfind("}")
                             if idx != -1 and end_idx != -1:
@@ -171,7 +172,8 @@ async def run_interactive_login() -> None:
                     except Exception:
                         pass
 
-                ws.on("framesent", on_framesent)
+                ws.on("framesent", on_frame)
+                ws.on("framereceived", on_frame)
 
             async def on_response(response: Any) -> None:
                 nonlocal captured_ws_token
@@ -189,7 +191,7 @@ async def run_interactive_login() -> None:
 
             print(
                 "\n👉 The helper will automatically capture your session "
-                "once the browser lands on the Trading Platform (https://qxbroker.com/en/trade).\n"
+                "once the browser lands on the Trading Platform (https://quotex.com/en/trade).\n"
             )
 
             token_found = False
@@ -244,13 +246,19 @@ async def run_interactive_login() -> None:
                     c["name"]: c["value"] for c in cookies if "name" in c and "value" in c
                 }
 
-                # Only proceed if we captured the genuine WebSocket auth token
-                if captured_ws_token:
+                # Check if we landed on trade page or have valid credentials
+                candidate_token = captured_ws_token or (
+                    cookie_dict.get("laravel_session")
+                    if ("/trade" in current_url or "/demo-trade" in current_url)
+                    else ""
+                )
+
+                if candidate_token and ("laravel_session" in cookie_dict or captured_ws_token):
                     parts = [f"{k}={v}" for k, v in cookie_dict.items()]
                     cookies_str = "; ".join(parts)
-                    ssid_token = captured_ws_token
+                    ssid_token = candidate_token
                     token_found = True
-                    print(f"\n✓ Logged in! Captured Verified WebSocket Token: {ssid_token[:10]}...")
+                    print(f"\n✓ Logged in! Captured Verified Token: {ssid_token[:10]}...")
                     print("✓ Captured all session cookies!")
                     break
 
@@ -267,24 +275,54 @@ async def run_interactive_login() -> None:
                 updates = {
                     "QUOTEX_COOKIES": cookies_str,
                     "QUOTEX_USER_AGENT": (
-                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                     ),
                 }
                 if ssid_token:
                     updates["QUOTEX_SSID"] = ssid_token
                 _update_env_file(env_file, updates)
                 print("✓ Updated .env file with fresh session tokens and User-Agent!")
-                print("You can now run: uv run python -m nexus.main --gui --demo")
+
+                # Immediately refresh the broker connection and populate the
+                # live market catalog using the credentials we just captured.
+                print("\nRefreshing broker connection and fetching live market catalog...")
+                try:
+                    import sys
+
+                    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                    load_dotenv(env_file, override=True)
+
+                    from nexus.catalog.ingest import fetch_live_catalog
+                    from nexus.core.engine import NexusEngine
+                    from nexus.utils.config import load_runtime_settings
+
+                    cfg = load_runtime_settings()
+                    engine = NexusEngine(cfg, demo_mode=True, auto_login=False)
+                    connected = await engine.login_broker()
+                    if connected:
+                        markets = await fetch_live_catalog(engine._broker)  # type: ignore[arg-type]
+                        print(
+                            f"✓ Broker connected. {len(markets)} live markets loaded into catalog."
+                        )
+                    else:
+                        print(
+                            "⚠ Broker reconnect failed after capturing session. "
+                            "Run 'uv run python -m nexus.main' to retry."
+                        )
+                except Exception as post_err:
+                    print(f"⚠ Post-login catalog fetch failed: {post_err}")
 
             else:
                 print("⚠ Sign-in timed out or session tokens were not captured.")
     except Exception as err:
         err_msg = str(err)
         print(f"\n⚠ Browser launch notice: {err_msg}\n")
-        if "shared libraries" in err_msg or "libasound" in err_msg:
-            print("To enable full Playwright browser window on Ubuntu 24.04+, run:")
-            print("  sudo apt-get install -y libasound2t64 libgdk-pixbuf-2.0-0 libgtk-3-0t64")
+        if "shared libraries" in err_msg or "libasound" in err_msg or "libnspr" in err_msg or "libnss" in err_msg:
+            print("To enable full Playwright browser window on Ubuntu, install missing shared libraries:")
+            print("  sudo apt-get update && sudo apt-get install -y libnspr4 libnss3 libasound2t64 libgdk-pixbuf-2.0-0 libgtk-3-0t64")
+            print("Or install all Playwright Chromium dependencies automatically:")
+            print("  sudo uv run playwright install-deps chromium")
 
         print(
             "\nAlternatively, copy your laravel_session cookie from your regular browser into .env:"

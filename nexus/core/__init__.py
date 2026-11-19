@@ -6,12 +6,6 @@ Import components explicitly where needed, e.g.:
     from nexus.core.engine import NexusEngine
 """
 
-try:
-    from .engine import NexusEngine  # noqa: F401
-except Exception:  # pragma: no cover
-    # Provide a placeholder to prevent import explosions if dependencies missing
-    class NexusEngine:  # type: ignore
-        pass
-
+from .engine import NexusEngine
 
 __all__ = ["NexusEngine"]

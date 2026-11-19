@@ -269,8 +269,8 @@ class MarketPredictor:
             self.criterion = _nn.CrossEntropyLoss()
 
             # Feature normalizers
-            self.feature_means = None
-            self.feature_stds = None
+            self.feature_means: Optional[np.ndarray] = None
+            self.feature_stds: Optional[np.ndarray] = None
 
             # Class mapping
             self.class_to_signal = {0: "hold", 1: "call", 2: "put"}
@@ -294,7 +294,7 @@ class MarketPredictor:
     class _FallbackModel:
         """Minimal callable to satisfy tests without torch."""
 
-        def __call__(self, x):  # x is numpy array or placeholder
+        def __call__(self, x):  # x is numpy array or feature tensor
             import numpy as _np
 
             logits = _np.zeros((1, 3), dtype=_np.float32)

@@ -1,106 +1,45 @@
-# Data Directory
+# Local data
 
-This directory stores market data, cache, and historical information for NEXUS.
+NEXUS uses `data/` for downloaded or generated market data and local state. Keep account-specific or licensed broker data private. Runtime data is ignored by Git; this README is kept to describe the directory.
 
-## Structure
+## Common data
 
-```
-data/
-├── cache/              # Cached market data (gitignored)
-│   ├── EURUSD_5m.csv
-│   ├── GBPUSD_15m.csv
-│   └── ...
-├── historical/         # Historical data downloads
-├── features/           # Pre-computed features
-└── README.md          # This file
-```
+| Path | Purpose |
+|---|---|
+| `cache/` | Cached OHLCV data used by `DataProvider` |
+| `historical/` | Optional historical data files for local research |
+| `features/` | Optional saved or precomputed feature data |
+| `experience.sqlite3` | Local experience memory used by adaptive research components |
 
-## Cache Directory
+Not every workflow creates every directory. Additional scripts may store artifacts under `reports/` or `models/`.
 
-The `cache/` folder stores:
-- Downloaded market data from brokers
-- Pre-processed OHLCV data
-- Technical indicator calculations
-- Feature engineering outputs
+## Using the data provider
 
-**Note**: Cache files are automatically managed and excluded from Git.
+`DataProvider` caches requests under `data/cache` by default. It supports broker, CSV, and synthetic sources; broker access requires a configured adapter.
 
-## Usage
-
-### Data Provider
 ```python
+import asyncio
+
 from nexus.data.provider import DataProvider
 
-provider = DataProvider(cache_dir="data/cache")
 
-# Get data (auto-cached)
-df = await provider.get_ohlcv(
-    symbol="EURUSD",
-    timeframe=5,
-    limit=500,
-    use_cache=True,  # Uses cache if available
-)
+async def load_data():
+    provider = DataProvider(cache_dir="data/cache")
+    return await provider.get_ohlcv(
+        symbol="EURUSD",
+        timeframe=5,
+        limit=500,
+        source="synthetic",  # use "csv" or "broker" when configured
+    )
+
+
+df = asyncio.run(load_data())
 ```
 
-### Feature Engineering
-```python
-from nexus.data.provider import FeatureEngineer
+`get_ohlcv` returns a pandas DataFrame or `None` when the selected source cannot provide data. The exact columns depend on the provider’s normalized output; inspect the returned frame before relying on a schema.
 
-engineer = FeatureEngineer()
-df_with_features = engineer.add_features(df)
+## Cleanup and privacy
 
-# Save for reuse
-provider.save_to_csv(df_with_features, "EURUSD", 5)
-```
+Cache files can be deleted and fetched again. Do not delete local research or experience data unless you are comfortable losing it. The launcher’s clean option removes `data/cache/*`; review the code before using cleanup tools.
 
-## Data Sources
-
-1. **Quotex Broker**: Live market data
-2. **CSV Files**: Historical data files
-3. **Synthetic**: Generated data for testing
-
-## Cache Management
-
-### Clear Cache
-```powershell
-# Via run script
-.\run.ps1  # Select option 7
-
-# Or manually
-Remove-Item data/cache/* -Recurse
-```
-
-### Cache Statistics
-```python
-provider = DataProvider()
-stats = provider.get_cache_stats()
-print(f"Cached items: {stats['cached_items']}")
-```
-
-## Data Format
-
-Standard OHLCV format:
-```csv
-timestamp,open,high,low,close,volume
-2025-01-01 00:00:00,1.0950,1.0955,1.0945,1.0952,1000
-2025-01-01 00:05:00,1.0952,1.0960,1.0950,1.0958,1200
-...
-```
-
-## Best Practices
-
-1. **Regular cleanup**: Remove old cache files
-2. **Backup important data**: Don't rely solely on cache
-3. **Verify data quality**: Check for gaps and anomalies
-4. **Use appropriate timeframes**: Match your strategy needs
-5. **Monitor cache size**: Avoid filling disk space
-
-## Data Privacy
-
-- No sensitive personal data stored here
-- Market data is public information
-- Cache can be safely deleted anytime
-
----
-
-**Note**: This directory is for local data storage. The database, downloaded market data, caches, reports, and other generated files are gitignored. Back up any important data separately before cleaning the workspace.
+Logs, reports, browser sessions, and databases may contain sensitive material. Inspect and sanitize them before sharing or backing them up to a public location. See [Security](../SECURITY.md).
